@@ -245,13 +245,14 @@ class Pod:
 		self.results[row_key]['pmin'] = nmin
 		self.results[row_key]['pmax'] = nmax
 		self.results[row_key]['pavg'] = navg
-		self.results[row_key]['evenness'] = int((nmax - nmin) / (self.results[row_key]['max']) * 100)
+		if self.results[row_key]['max'] == 0:
+			self.results[row_key]['evenness'] = 0
+		else:
+			self.results[row_key]['evenness'] = int((nmax - nmin) / (self.results[row_key]['max']) * 100)
 
 	def init_results(self):
 		for row in self.matrix.matrix:
 			if not self.results[row].get('filtered_out'):
-				if not row in self.results:
-					print row
 				self.results[row]['equals'] = []
 				self.results[row]['equals_count'] = 0
 
@@ -260,9 +261,9 @@ class Pod:
 		nkeys_len = len(nkeys)
 		for i in range(0, nkeys_len):
 			key = nkeys[i]
+			self.analyze_row(key)
 			if self.results[key].get('filtered_out'):
 				continue
-			self.analyze_row(key)
 			for k in range(i + 1, nkeys_len):
 				if self.results[nkeys[k]].get('filtered_out'):
 					continue
@@ -274,25 +275,25 @@ class Pod:
 					self.results[nkeys[k]]['filtered_out'] = True
 
 	def process_pod(self):
-		print "Handling files for pod:", self.name
+		# print "Handling files for pod:", self.name
 		files = os.listdir(self.path)
 		files.sort()
 		for f in files:
 			if isfile(join(self.path, f)) and f.startswith(self.name):
-				print f
+				# print f
 				self.read_envoy_data(f)
 		#transform_prometheus_matrix()
 		self.init_results()
 		self.nmatrix = self.matrix.normalize_matrix()
 		self.matrix.compute_results(len(self.matrix.matrix), [Matrix.criterion_dispersion, Matrix.criterion_max_peaks, Matrix.criterion_num_changes])
 		self.analyze_results()
-		print 'Total rows', len(self.matrix.matrix)
-		print ''
-		print 'All data:'
+		# print 'Total rows', len(self.matrix.matrix)
+		# print ''
+		# print 'All data:'
 		csv_name = join(self.path, 'csv-' + self.name + '.csv')
-		self.display_all(self.matrix, csv_name)
+		#self.display_all(self.matrix, csv_name)
 		csv_name = join(self.path, 'csv-norm-' + self.name + '.csv')
-		self.display_all(self.nmatrix, csv_name )
+		#self.display_all(self.nmatrix, csv_name )
 		#print 'Max peaks:'
 		#csv_name = join(self.path, 'csv-' + self.name + '-max_peaks.csv')
 		#display_top('max_peaks', csv_name)
@@ -313,8 +314,9 @@ def main():
 	parser.add_argument('-p', '--pods', help='list of pods', nargs='+')
 	args = parser.parse_args()
 
+	print "Processing pods"
 	if args.refpath:
-		print "Parsing reference model"
+		# print "Parsing reference model"
 		for pod_name in args.pods:
 			pod = Pod(pod_name, args.refpath)
 			pod.process_pod()
@@ -329,12 +331,12 @@ def main():
 	print "Looking for anomalies"
 	for pod_name in pods.keys():
 		results = pods[pod_name].results
-		refresults = pods[pod_name].results
+		refresults = refpods[pod_name].results
 		for row in results.keys():
 			if not results[row].get('filtered_out') and results[row]['evenness'] > refresults[row]['evenness']:
-				print "Pod:", pod_name, "Row:", row, 'Evenness:', results[row]['evenness'], '>', refresults[row]['evenness']
-			if not results[row].get('filtered_out') and results[row]['equals'] > refresults[row]['equals']:
-				print "Pod:", pod_name, "Row:", row, 'Equals:', results[row]['equals'], '>', refresults[row]['equals']
+				print "Pod:", pod_name,'Evenness:', results[row]['evenness'], '>', refresults[row]['evenness'], "Row:", row 
+			if not results[row].get('filtered_out') and results[row]['equals_count'] < refresults[row]['equals_count']:
+				print "Pod:", pod_name, 'Equals:', results[row]['equals_count'], '<', refresults[row]['equals_count'], "Row:", row
 	print "Done"
 
 main()
