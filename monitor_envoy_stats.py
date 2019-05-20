@@ -23,6 +23,7 @@ screen = None
 sort_column = 'equals'
 sort_metric = 'equals_count'
 empty_filter = True
+learning = True
 
 def exclude_row(key, value):
 	if not '9080' in key or 'version' in key:
@@ -30,10 +31,11 @@ def exclude_row(key, value):
 	return False
 
 class Results:
-	cols = ['name', 'nature', 'equals', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval', 'start']
+	cols = ['name', 'nature', 'equals', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval', 'd_equals', 'd_dev', 'd_ndev', 'start']
 	cols_props = {'name': 'name', 'nature': 'nature', 'start': 'start',
 				'equals': 'equals_count', 'min': 'min', 'avg': 'avg', 'max': 'max', 'dev': 'dev',
-				'navg': 'norm_avg', 'ndev': 'norm_dev', 'val': 'last_value', 'nval': 'norm_last_value'}
+				'navg': 'norm_avg', 'ndev': 'norm_dev', 'val': 'last_value', 'nval': 'norm_last_value',
+				'd_equals': 'diff_equals_count', 'd_dev': 'diff_dev', 'd_ndev': 'diff_norm_dev'}
 	
 	def __init__(self, name, nature):
 		# Name: name of the metric
@@ -84,6 +86,21 @@ class Results:
 		self.norm_avg = 0.0
 		# Dev: normalized deviation
 		self.norm_dev = 0.0
+		
+		# Reference stats: stats frozen after learning stage and diffs with current stats for anomalies:
+		# Ref count: point of freeze
+		self.ref_count = 0
+		# Ref equals count: reference number of equals
+		self.ref_equals_count = 0
+		# Ref deviation: reference deviation
+		self.ref_dev = 0.0
+		# Ref normalized deviation: reference normalize deviation
+		self.ref_norm_dev = 0.0
+		# Equals count diff: difference between current and reference equals count
+		self.diff_equals_count = 0
+		# Deviation diff: difference between current and reference deviations
+		self.diff_dev = 0.0
+		# Deviation diff: difference between current and reference normalized deviations
 
 	def get(self, prop):
 		return getattr(self, prop)
@@ -96,7 +113,8 @@ class Results:
 
 	def tabulate_values(self):
 		return [self.name, self.nature, self.equals_count, self.min, self.avg, self.max, self.dev,
-				self.norm_avg, self.norm_dev, self.last_value, self.norm_last_value, self.start]
+				self.norm_avg, self.norm_dev, self.last_value, self.norm_last_value,
+				self.diff_equals_count, self.diff_dev, self.diff_norm_dev, self.start]
 		
 	def is_equal(self, result):
 		return (not result.empty and abs(self.norm_last_value - result.norm_last_value) <= EQUAL_ROWS_THRESHOLD and
@@ -106,6 +124,15 @@ class Results:
 
 	def normalize(self, value):
 		return value / self.max
+	
+	def set_reference(self):
+		self.ref_count = self.count
+		self.ref_equals_count = self.equals_count
+		self.ref_dev = self.dev
+		self.ref_norm_dev = self.norm_dev
+		self.diff_equals_count = 0
+		self.diff_dev = 0.0
+		self.diff_norm_dev = 0.0
 
 	# Adds another "slave" sibling to a group of equals
 	def set_equal(self, new_primary_equal):
@@ -158,6 +185,17 @@ class Results:
 		else:
 			norm_value = 0.0
 		self.norm_last_value = norm_value
+		if learning:
+			self.diff_equals_count = 0
+			self.diff_dev = 0.0
+			self.diff_norm_dev = 0.0
+		else:
+			# We'll be looking for metrics with less equals than in reference, which means less uniformity
+			self.diff_equals_count = self.ref_equals_count - self.equals_count
+			# We'll be looking for metrics with increased deviations
+			self.diff_dev = self.dev - self.ref_dev
+			self.diff_norm_dev = self.norm_dev - self.ref_norm_dev
+
 
 class Pod:
 	def __init__(self, name, path):
@@ -165,6 +203,7 @@ class Pod:
 		self.path = path
 		self.stats = {}
 		self.results = {}
+		self.ref_results = None
 		self.matrix = {}
 		self.files = set()
 		self.series_count = 0
@@ -175,6 +214,10 @@ class Pod:
 		self.filtered_out = 0
 		self.equaled_out = 0
 		self.zeroed_out = 0
+
+	def set_reference(self):
+		for result in self.results.values():
+			result.set_reference()
 
 	def add_value(self, key, value, empty, nature):
 		if not key in self.results:
@@ -189,6 +232,12 @@ class Pod:
 		self.matrix[key].append(value)
 		result.process_value(value)
 
+	def shorten(self, key):
+		key = key.replace('cluster.inbound', 'c.in')
+		key = key.replace('cluster.outbound', 'c.out')
+		key = key.replace('default.svc.cluster.local', 'd.s.c.l')
+		return key
+
 	def read_envoy_data(self, fname):
 		with open(join(self.path, fname), 'r') as f:
 			fcontents = f.read()
@@ -199,7 +248,7 @@ class Pod:
 			for row in contents:
 				row_split = row.split(':')
 				try:
-					key = row_split[0]
+					key = self.shorten(row_split[0])
 					value = row_split[1]
 				except:
 					print fname, row
@@ -267,7 +316,7 @@ class Pod:
 	def sort_top(self, sort_metric, num_rows):
 		self.top = []
 		for i in range(0, num_rows):
-			self.top.append(('dummy', -1))
+			self.top.append((None, -1))
 		for metric, result in self.results.iteritems():
 			if result.filtered_out or result.primary_equal or result.zeroed_out() or (empty_filter and result.empty):
 				continue
@@ -285,7 +334,7 @@ class Pod:
 				#	quit()
 				self.read_envoy_data(f)
 				self.process_last_series()
-				#break	
+				break	
 
 def process_pods(path, pod_names):
 		files = os.listdir(path)
@@ -305,7 +354,7 @@ def display_top_table(pod, num_rows):
 	for metric, value in pod.top:
 		if n == num_rows:
 			break
-		if metric == 'dummy':
+		if not metric:
 			continue
 		top_table.append(pod.results[metric].tabulate_values())
 		n += 1
@@ -324,8 +373,8 @@ def display_matrix(pod):
 
 def display_screen(pod, num_rows):
 	screen.clear()
-	screen.addstr('Keys: "q" - exit, "e" - toggle empty, arrows - shift sorting\n')
-	screen.addstr(str(datetime.datetime.now()) + '\n')
+	screen.addstr('Keys: "q" - exit, "l" - toggle learning/monitoring, "e" - toggle empty, arrows - shift sorting\n')
+	screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + ' Key: ' + str(key) + '\n')
 	screen.addstr('Pods: ' + str(len(pods)) + ' Metrics: ' + str(pods.values()[0].metrics_count) + ' Series: ' + str(pods.values()[0].series_count) +
 					' Unique: ' + str(pod.unique) + ' Empty: ' + str(pod.empty) +
 					' Filtered out: ' + str(pod.filtered_out) + ' Equaled out: ' + str(pod.equaled_out) + 
@@ -344,6 +393,7 @@ def shift_sort(shift):
 	sort_column = Results.cols[new_i]
 	sort_metric = Results.cols_props[sort_column]
 
+# Emulation class to use instead of curses in IDE
 class Screen:
 	def addstr(self, str):
 		print str
@@ -363,8 +413,10 @@ class Screen:
 	def nodelay(self, delay):
 		pass
 
+key = -1
+
 def main(stdscr):
-	global screen, empty_filter
+	global screen, empty_filter, learning, key
 	screen = stdscr
 	parser = argparse.ArgumentParser()
 	parser.add_argument('path', help='metrics dir')
@@ -380,14 +432,21 @@ def main(stdscr):
 		key = -1
 		time.sleep(1)
 		process_pods(args.path, args.pods)
-		key = stdscr.getch()
-		if key == curses.KEY_LEFT:
-			shift_sort(-1)
-		if key == curses.KEY_RIGHT:
-			shift_sort(1)
-		if key == ord('e'):
-			empty_filter = not empty_filter		
-		stdscr.refresh()
+		while True:
+			key = stdscr.getch()
+			if key == curses.KEY_LEFT:
+				shift_sort(-1)
+			if key == curses.KEY_RIGHT:
+				shift_sort(1)
+			if key == ord('e'):
+				empty_filter = not empty_filter
+			if key == ord('l'):
+				learning = not learning
+				for pod in pods.values():
+					pod.set_reference()
+			stdscr.refresh()
+			if key == -1 or key == ord('q'):
+				break
 
 wrapper(main)
 #main(Screen())
