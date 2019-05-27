@@ -22,6 +22,7 @@ refpods = {}
 screen = None
 sort_column = 'equals'
 sort_metric = 'equals_count'
+current_pod = ''
 empty_filter = True
 learning = True
 
@@ -362,6 +363,11 @@ def display_top_table(pod, num_rows):
 	titles[titles.index(sort_column)] = sort_column.upper()
 	screen.addstr(tabulate(top_table, headers=titles, tablefmt="plain", floatfmt=".2f"))
 
+def highlight(arr, key):
+	highlighted = deepcopy(arr)
+	highlighted[arr.index(key)] = key.upper()
+	return str(join(highlighted))
+
 def display_matrix(pod):
 	top_table = []
 	for item in pod.matrix.matrix.items():
@@ -373,8 +379,9 @@ def display_matrix(pod):
 
 def display_screen(pod, num_rows):
 	screen.clear()
-	screen.addstr('Keys: "q" - exit, "l" - toggle learning/monitoring, "e" - toggle empty, arrows - shift sorting\n')
-	screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + ' Key: ' + str(key) + '\n')
+	screen.addstr('Keys: "q" - exit, "l" - toggle learning/monitoring, "e" - toggle empty, arrows left/right - shift sorting\n')
+	screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + '\n')
+	screen.addstr('Pods: ' + highlight(pods.keys(), current_pod) + ' press up or down to change pods\n')
 	screen.addstr('Pods: ' + str(len(pods)) + ' Metrics: ' + str(pods.values()[0].metrics_count) + ' Series: ' + str(pods.values()[0].series_count) +
 					' Unique: ' + str(pod.unique) + ' Empty: ' + str(pod.empty) +
 					' Filtered out: ' + str(pod.filtered_out) + ' Equaled out: ' + str(pod.equaled_out) + 
@@ -384,15 +391,22 @@ def display_screen(pod, num_rows):
 	display_top_table(pod, num_rows)
 	screen.refresh()
 
+def shift_index(key, shift, arr):
+	i = arr.index(key)
+	new_i = i + shift
+	if new_i < 0 or new_i == len(arr):
+		new_i = i
+	return new_i
+	
 def shift_sort(shift):
 	global sort_column, sort_metric
-	i = Results.cols.index(sort_column)
-	new_i = i + shift
-	if new_i < 0 or new_i == len(Results.cols):
-		new_i = i
-	sort_column = Results.cols[new_i]
+	sort_column = Results.cols[shift_index(sort_column, shift, Results.cols)]
 	sort_metric = Results.cols_props[sort_column]
 
+def change_pod(shift):
+	global current_pod, pods
+	current_pod = pods.keys()[shift_index(current_pod, shift, pods.keys())]
+	
 # Emulation class to use instead of curses in IDE
 class Screen:
 	def addstr(self, str):
@@ -416,7 +430,7 @@ class Screen:
 key = -1
 
 def main(stdscr):
-	global screen, empty_filter, learning, key
+	global screen, empty_filter, learning, key, current_pod
 	screen = stdscr
 	parser = argparse.ArgumentParser()
 	parser.add_argument('path', help='metrics dir')
@@ -427,6 +441,7 @@ def main(stdscr):
 	stdscr.keypad(True)
 	stdscr.nodelay(1)
 	stdscr.addstr("Processing pods\n")
+	current_pod = args.pods[0]
 	key = -1
 	while key != ord('q'):
 		key = -1
@@ -438,6 +453,10 @@ def main(stdscr):
 				shift_sort(-1)
 			if key == curses.KEY_RIGHT:
 				shift_sort(1)
+			if key == curses.KEY_UP:
+				change_pod(-1)
+			if key == curses.KEY_DOWN:
+				change_pod(1)
 			if key == ord('e'):
 				empty_filter = not empty_filter
 			if key == ord('l'):
