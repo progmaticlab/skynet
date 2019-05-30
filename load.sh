@@ -1,3 +1,4 @@
+source /Users/alevine/.basheditor/remote-debugging-v1.sh localhost 33333 #BASHEDITOR-TMP-REMOTE-DEBUGGING-END
 #!/bin/bash
 
 # $1 - Time in seconds or number of curls if sleep is 0
@@ -26,3 +27,4 @@ do
 #        request 30 0.1
 #        request 30 0.01
 done
+q
