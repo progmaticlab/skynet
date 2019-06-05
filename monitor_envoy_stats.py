@@ -18,17 +18,10 @@ from pip._vendor.html5lib.filters.sanitizer import allowed_protocols
 from copy import deepcopy
 
 EQUAL_ROWS_THRESHOLD = 0.05
+ANOMALY_MAX_THRESHOLD = 0.05
 ANOMALY_DEVIATION_THRESHOLD = 0.05
 
-pods = {}
-refpods = {}
-screen = None
-sort_column = 'equals'
-sort_metric = 'equals_count'
-current_pod = ''
-empty_filter = True
 learning = True
-ref_file = ''
 
 def exclude_row(key, value):
 	if not '9080' in key or 'version' in key:
@@ -36,12 +29,12 @@ def exclude_row(key, value):
 	return False
 
 class Results:
-	cols = ['name', 'nature', 'equals', 'unequal', 'deviated', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval', 'd_equals', 'd_dev', 'd_ndev', 'start']
+	cols = ['name', 'nature', 'equals', 'anomalies', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval', 'd_equals', 'd_max', 'd_dev', 'd_ndev', 'start']
 	cols_props = {'name': 'name', 'nature': 'nature', 'start': 'start',
 				'equals': 'equals_count', 'min': 'min', 'avg': 'avg', 'max': 'max', 'dev': 'dev',
 				'navg': 'norm_avg', 'ndev': 'norm_dev', 'val': 'last_value', 'nval': 'norm_last_value',
-				'd_equals': 'diff_equals_count', 'd_dev': 'diff_dev', 'd_ndev': 'diff_norm_dev',
-				'unequal': 'anomaly_unequal', 'deviated': 'anomaly_deviated'}
+				'd_equals': 'diff_equals_count', 'd_max': 'diff_max', 'd_dev': 'diff_dev', 'd_ndev': 'diff_norm_dev',
+				'anomalies': 'anomalies'}
 	
 	def __init__(self, name, nature):
 		# Name: name of the metric
@@ -98,21 +91,27 @@ class Results:
 		self.ref_count = 0
 		# Ref equals count: reference number of equals
 		self.ref_equals_count = 0
+		# Ref max: reference maximum
+		self.ref_max = 0.0
 		# Ref deviation: reference deviation
 		self.ref_dev = 0.0
 		# Ref normalized deviation: reference normalize deviation
 		self.ref_norm_dev = 0.0
 		# Equals count diff: difference between current and reference equals count
 		self.diff_equals_count = 0
+		# Max diff: difference between current and reference max values
+		self.diff_max = 0.0
 		# Deviation diff: difference between current and reference deviations
 		self.diff_dev = 0.0
 		# Normalized deviation diff: difference between current and reference normalized deviations
 		self.diff_norm_dev = 0.0
 		
-		# Unequal anomalies: count of anomalies of metrics split from main group of equals
+		# Anomalies: count of anomalies of metrics
+		self.anomalies = 0
 		self.anomaly_unequal = 0
-		# Deviated anomailes: count of anomalies of metrics exceeding their normalized deviation by a threshold
+		self.anomaly_maxed = 0
 		self.anomaly_deviated = 0
+
 
 	def get(self, prop):
 		return getattr(self, prop)
@@ -124,10 +123,10 @@ class Results:
 		return self.min == float('inf') or self.max == 0
 
 	def tabulate_values(self):
-		return [self.name, self.nature, self.equals_count, self.anomaly_unequal, self.anomaly_deviated,
+		return [self.name, self.nature, self.equals_count, self.anomalies,
 				self.min, self.avg, self.max, self.dev,
 				self.norm_avg, self.norm_dev, self.last_value, self.norm_last_value,
-				self.diff_equals_count, self.diff_dev, self.diff_norm_dev, self.start]
+				self.diff_equals_count, self.diff_max, self.diff_dev, self.diff_norm_dev, self.start]
 		
 	def is_equal(self, result):
 		return (abs(self.norm_last_value - result.norm_last_value) <= EQUAL_ROWS_THRESHOLD and
@@ -139,13 +138,17 @@ class Results:
 	def set_reference(self):
 		self.ref_count = self.count
 		self.ref_equals_count = self.equals_count
+		self.ref_max = self.max
 		self.ref_dev = self.dev
 		self.ref_norm_dev = self.norm_dev
 		self.diff_equals_count = 0
+		self.diff_max = 0.0
 		self.diff_dev = 0.0
 		self.diff_norm_dev = 0.0
-		self.anomaly_deviated = 0
+		self.anomalies = 0
 		self.anomaly_unequal = 0
+		self.anomaly_maxed = 0
+		self.anomaly_deviated = 0
 
 	# Verifies if result is still equaled out by its primary equal and removes equality if not
 	def verify_equaled_out(self):
@@ -155,6 +158,7 @@ class Results:
 			self.primary_equal.equals.remove(self.name)
 			if learning == False:
 				self.anomaly_unequal = abs(self.norm_last_value - self.primary_equal.norm_last_value)
+				self.anomalies += 1
 			
 	# Verify if previously non-equal results are equal and set the grouping if they are (expects non-discard() self and result)
 	def verify_is_equal(self, result):
@@ -210,16 +214,22 @@ class Results:
 		self.norm_last_value = norm_value
 		if learning:
 			self.diff_equals_count = 0
+			self.diff_max = 0.0
 			self.diff_dev = 0.0
 			self.diff_norm_dev = 0.0
 		else:
 			# We'll be looking for metrics with less equals than in reference, which means less uniformity
 			self.diff_equals_count = self.ref_equals_count - self.equals_count
-			# We'll be looking for metrics with increased deviations
+			# We'll be looking for metrics with increased values
+			self.diff_max = self.max - self.ref_max
 			self.diff_dev = self.dev - self.ref_dev
 			self.diff_norm_dev = self.norm_dev - self.ref_norm_dev
+			if self.diff_max > self.ref_max * (1 + ANOMALY_MAX_THRESHOLD):
+				self.anomaly_max = self.diff_max
+				self.anomalies += 1
 			if self.diff_norm_dev > ANOMALY_DEVIATION_THRESHOLD:
-				self.anomaly_deviated = self.diff_norm_dev
+				self.anomaly_norm_deviated = self.diff_norm_dev
+				self.anomalies += 1
 
 
 class Pod:
@@ -239,11 +249,13 @@ class Pod:
 		self.equaled_out = 0
 		self.zeroed_out = 0
 		self.anomalies = 0
+		self.anomaly_unequal = 0
+		self.anomaly_maxed = 0
+		self.anomaly_deviated = 0
 
 	def set_reference(self):
 		for result in self.results.values():
 			result.set_reference()
-		anomalies = {}
 
 	def add_value(self, key, value, empty, nature):
 		if not key in self.results:
@@ -323,8 +335,14 @@ class Pod:
 		self.anomalies = 0
 		for result in self.results.values():
 			result.equals_count = len(result.equals)
-			if result.anomaly_unequal or result.anomaly_deviated:
+			if result.anomalies:
 				self.anomalies += 1
+				if result.anomaly_unequal:
+					self.anomaly_unequal += 1
+				if result.anomaly_maxed:
+					self.anomaly_maxed += 1
+				if result.anomaly_deviated:
+					self.anomaly_deviated += 1
 			if result.equaled_out:
 				self.equaled_out += 1
 			elif result.filtered_out:
@@ -336,19 +354,24 @@ class Pod:
 			else:
 				self.unique += 1
 
-	def sort_top(self, sort_metric, num_rows):
+	def sort_top(self, sort_metric, num_rows, empty_filter):
 		self.top = []
+		if sort_metric in ['name', 'nature']:
+				init_value = ''
+		else:
+				init_value = -1
 		for i in range(0, num_rows):
-			self.top.append((None, -1))
+				self.top.append((None, init_value))
 		for metric, result in self.results.items():
-			if result.discard() and not empty_filter and not result.empty:
-				continue
-			value = result.get(sort_metric)
-			for i in range(0, num_rows):
-				if value != None and value > self.top[i][1]:
-					self.top.insert(i, (metric, value))
-					del self.top[-1]
-					break
+				if result.discard() and not empty_filter and not result.empty:
+						continue
+				value = result.get(sort_metric)
+				for i in range(0, num_rows):
+						if value != None and value > self.top[i][1]:
+								self.top.insert(i, (metric, value))
+								del self.top[-1]
+								break
+
 
 	def process_pod(self, files):
 		for f in files:
@@ -359,103 +382,149 @@ class Pod:
 				self.process_last_series()
 				# break #Uncomment this break to process each existing series per second
 
-def process_pods(path, pod_names):
-		global current_pod
+class Monitor:
+	
+	def __init__(self, screen, args):
+		self.screen = screen
+		self.args = args
+		self.pods = {}
+		self.refpods = {}
+		self.sort_column = 'equals'
+		self.sort_metric = 'equals_count'
+		self.current_pod = ''
+		self.empty_filter = True
+		self.ref_file = ''
+
+	def process_pods(self, path, pod_names):
 		files = os.listdir(path)
 		files.sort()
 		for pod_name in pod_names:
-			pod = pods.get(pod_name)
+			pod = self.pods.get(pod_name)
 			if pod == None:
 				pod = Pod(pod_name, path)
-				pods[pod_name] = pod
-				display_screen(None, 20)			
+				self.pods[pod_name] = pod
+				self.display_screen(None, 20)			
 			pod.process_pod(files)
-		pods[current_pod].sort_top(sort_metric, 20)
-		display_screen(pods[current_pod], 20)
-
-def save_pods(ref_file):
-	global pods
-	for pod in pods.values():
-		pod.matrix = {}
-		pod.stats = {}
-	with open(ref_file, 'wb') as output:
-		pickle.dump(pods, output, pickle.HIGHEST_PROTOCOL)
+		self.pods[self.current_pod].sort_top(self.sort_metric, 20, self.empty_filter)
+		self.display_screen(self.pods[self.current_pod], 20)
 	
-def load_pods(ref_file):
-	global pods
-	if isfile(join(ref_file)):
-		with open(ref_file, 'rb') as input:
-			pods = pickle.load(input)
-
-def display_top_table(pod, num_rows):
-	top_table = []
-	n = 0
-	for metric, value in pod.top:
-		if n == num_rows:
-			break
-		if not metric:
-			continue
-		top_table.append(pod.results[metric].tabulate_values())
-		n += 1
-	titles = deepcopy(Results.cols)
-	titles[titles.index(sort_column)] = sort_column.upper()
-	screen.addstr(tabulate(top_table, headers=titles, tablefmt="plain", floatfmt=".2f"))
-
-def display_anomalies_summary():
-	global pods
-
-	screen.addstr('\nPods anomalies:\n')
-	for pod in pods.values():
-		screen.addstr(pod.name + ': ' + str(pod.anomalies) + '\n')
-
-def highlight(arr, key):
-	arr[arr.index(key)] = key.upper()
-	s = ', '
-	return s.join(arr)
-
-def display_matrix(pod):
-	top_table = []
-	for item in pod.matrix.matrix.items():
-		result = pod.results[item[0]]
-		if result.min == 0 or result.max == 0:
-			continue
-		top_table.append([item[0]] + item[1])
-	screen.addstr(tabulate(top_table, tablefmt="orgtbl"))
-
-def display_screen(pod, num_rows):
-	screen.clear()
-	screen.addstr('Keys: "q" - exit, "l" - toggle learning/monitoring, "e" - toggle empty, "s" - save, arrows left/right - shift sorting\n')
-	screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + '\n')
-	screen.addstr('Pods: ' + highlight([*pods], current_pod) + ' press up or down to change pods\n')
-	if pod:
-		screen.addstr('Pods: ' + str(len(pods)) + ' Metrics: ' + str(pod.metrics_count) + ' Series: ' + str(pod.series_count) +
-					' Unique: ' + str(pod.unique) + ' Empty: ' + str(pod.empty) +
-					' Filtered out: ' + str(pod.filtered_out) + ' Equaled out: ' + str(pod.equaled_out) + 
-					' Zeroed out: ' + str(pod.zeroed_out) + '\n')
-		#display_matrix(pod)
-		display_top_table(pod, num_rows)
-		display_anomalies_summary()
-	else:
-		screen.addstr('Processing')
-	screen.refresh()
-
-def shift_index(key, shift, arr):
-	i = arr.index(key)
-	new_i = i + shift
-	if new_i < 0 or new_i == len(arr):
-		new_i = i
-	return new_i
+	def save_pods(self):
+		for pod in self.pods.values():
+			pod.matrix = {}
+			pod.stats = {}
+		with open(self.ref_file, 'wb') as output:
+			pickle.dump(self.pods, output, pickle.HIGHEST_PROTOCOL)
+		
+	def load_pods(self):
+		if isfile(join(self.ref_file)):
+			with open(self.ref_file, 'rb') as instream:
+				self.pods = pickle.load(instream)
 	
-def shift_sort(shift):
-	global sort_column, sort_metric
-	sort_column = Results.cols[shift_index(sort_column, shift, Results.cols)]
-	sort_metric = Results.cols_props[sort_column]
-
-def change_pod(shift):
-	global current_pod, pods
-	pods_arr = [*pods]
-	current_pod = pods_arr[shift_index(current_pod, shift, pods_arr)]
+	def display_top_table(self, pod, num_rows):
+		top_table = []
+		n = 0
+		for metric, value in pod.top:
+			if n == num_rows:
+				break
+			if not metric:
+				continue
+			top_table.append(pod.results[metric].tabulate_values())
+			n += 1
+		titles = deepcopy(Results.cols)
+		titles[titles.index(self.sort_column)] = self.sort_column.upper()
+		self.screen.addstr(tabulate(top_table, headers=titles, tablefmt="plain", floatfmt=".2f"))
 	
+	def display_anomalies_summary(self):
+		self.screen.addstr('\n\nPods anomalies:\n')
+		for pod in self.pods.values():
+			self.screen.addstr(pod.name + ': ' + str(pod.anomalies) + ', Unequal: ' + str(pod.anomaly_unequal) + ', Maxed: ' +
+						str(pod.anomaly_maxed) + ', Deviated: ' + str(pod.anomaly_deviated) + '\n'
+	)
+	
+	def highlight(self, arr, key):
+		arr[arr.index(key)] = key.upper()
+		s = ', '
+		return s.join(arr)
+	
+	def display_matrix(self, pod):
+		top_table = []
+		for item in pod.matrix.matrix.items():
+			result = pod.results[item[0]]
+			if result.min == 0 or result.max == 0:
+				continue
+			top_table.append([item[0]] + item[1])
+		self.screen.addstr(tabulate(top_table, tablefmt="orgtbl"))
+	
+	def display_screen(self, pod, num_rows):
+		self.screen.clear()
+		self.screen.addstr('Keys: "q" - exit, "l" - toggle learning/monitoring, "e" - toggle empty, "s" - save, arrows left/right - shift sorting\n')
+		self.screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + '\n')
+		self.screen.addstr('Pods: ' + self.highlight([*self.pods], self.current_pod) + ' press up or down to change pods\n')
+		if pod:
+			self.screen.addstr('Pods: ' + str(len(self.pods)) + ' Metrics: ' + str(pod.metrics_count) + ' Series: ' + str(pod.series_count) +
+						' Unique: ' + str(pod.unique) + ' Empty: ' + str(pod.empty) +
+						' Filtered out: ' + str(pod.filtered_out) + ' Equaled out: ' + str(pod.equaled_out) + 
+						' Zeroed out: ' + str(pod.zeroed_out) + '\n')
+			#self.display_matrix(pod)
+			self.display_top_table(pod, num_rows)
+			self.display_anomalies_summary()
+		else:
+			self.screen.addstr('Processing')
+		self.screen.refresh()
+	
+	def shift_index(self, key, shift, arr):
+		i = arr.index(key)
+		new_i = i + shift
+		if new_i < 0 or new_i == len(arr):
+			new_i = i
+		return new_i
+		
+	def shift_sort(self, shift):
+		self.sort_column = Results.cols[self.shift_index(self.sort_column, shift, Results.cols)]
+		self.sort_metric = Results.cols_props[self.sort_column]
+	
+	def change_pod(self, shift):
+		pods_arr = [*self.pods]
+		self.current_pod = pods_arr[self.shift_index(self.current_pod, shift, pods_arr)]
+
+	def run(self):
+		self.screen.keypad(True)
+		self.screen.nodelay(1)
+		self.screen.addstr("Processing pods\n")
+		self.screen.refresh()
+		if self.args.reffile:
+			self.ref_file = self.args.reffile
+			self.load_pods()
+		self.current_pod = self.args.pods[0]		
+		key = -1
+		while key != ord('q'):
+			key = -1
+			time.sleep(1)
+			self.process_pods(self.args.path, self.args.pods)
+			while True:
+				key = self.screen.getch()
+				if key == curses.KEY_LEFT:
+					self.shift_sort(-1)
+				if key == curses.KEY_RIGHT:
+					self.shift_sort(1)
+				if key == curses.KEY_UP:
+					self.change_pod(-1)
+				if key == curses.KEY_DOWN:
+					self.change_pod(1)
+				if key == ord('e'):
+					self.empty_filter = not self.empty_filter
+				if key == ord('s'):
+					self.screen.addstr('\nSaving to ' + self.args.reffile + '\n')
+					self.screen.refresh()
+					self.save_pods()
+				if key == ord('l'):
+					learning = not learning
+					for pod in self.pods.values():
+						pod.set_reference()
+				self.screen.refresh()
+				if key == -1 or key == ord('q'):
+					break
+
 # Emulation class to use instead of curses in IDE
 class Screen:
 	def addstr(self, str):
@@ -476,52 +545,19 @@ class Screen:
 	def nodelay(self, delay):
 		pass
 
-key = -1
+def run(stdscr, args):
+	monitor = Monitor(stdscr, args)
+	monitor.run()
 
-def main(stdscr):
-	global screen, empty_filter, learning, key, current_pod
-	screen = stdscr
+def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('path', help='metrics dir')
 	parser.add_argument('-r', '--reffile', help='reference model file')
 	parser.add_argument('-p', '--pods', help='list of pods', nargs='+')
 	args = parser.parse_args()
+	# Use this wrapper to run in top-like mode
+	wrapper(run, args)
+	# Use direct run for console sequential output for debugging purposes
+	#run(Screen(), args)
 
-	stdscr.keypad(True)
-	stdscr.nodelay(1)
-	stdscr.addstr("Processing pods\n")
-	stdscr.refresh()
-	if args.reffile:
-		load_pods(args.reffile)
-	current_pod = args.pods[0]		
-	key = -1
-	while key != ord('q'):
-		key = -1
-		time.sleep(1)
-		process_pods(args.path, args.pods)
-		while True:
-			key = stdscr.getch()
-			if key == curses.KEY_LEFT:
-				shift_sort(-1)
-			if key == curses.KEY_RIGHT:
-				shift_sort(1)
-			if key == curses.KEY_UP:
-				change_pod(-1)
-			if key == curses.KEY_DOWN:
-				change_pod(1)
-			if key == ord('e'):
-				empty_filter = not empty_filter
-			if key == ord('s'):
-				stdscr.addstr('\nSaving to ' + args.reffile + '\n')
-				stdscr.refresh()
- 				save_pods(args.reffile)
-			if key == ord('l'):
-				learning = not learning
-				for pod in pods.values():
-					pod.set_reference()
-			stdscr.refresh()
-			if key == -1 or key == ord('q'):
-				break
-
-wrapper(main)
-#main(Screen())
+main()
