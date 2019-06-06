@@ -1,21 +1,17 @@
 #!/usr/bin/python3
 
 import argparse
-import copy
-import csv
 import curses
 import datetime
 import math
 import os
 import pickle
 import re
-import sys
 import time
+from copy import deepcopy
 from curses import wrapper
 from os.path import isfile, join
 from tabulate import tabulate
-from pip._vendor.html5lib.filters.sanitizer import allowed_protocols
-from copy import deepcopy
 
 EQUAL_ROWS_THRESHOLD = 0.05
 ANOMALY_MAX_THRESHOLD = 0.05
@@ -23,9 +19,14 @@ ANOMALY_DEVIATION_THRESHOLD = 0.05
 
 learning = True
 
+exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer']
+
 def exclude_row(key, value):
-	if not '9080' in key or 'version' in key:
-		return True
+	for exclude in exclude_keys:
+		if exclude in key:
+			return True
+	#if not '9080' in key:
+	#	return True
 	return False
 
 class Results:
@@ -235,6 +236,7 @@ class Results:
 class Pod:
 	def __init__(self, name, path):
 		self.name = name
+		self.node = ''
 		self.path = path
 		self.stats = {}
 		self.results = {}
@@ -245,6 +247,7 @@ class Pod:
 		self.top = []
 		self.unique = 0
 		self.empty = 0
+		self.filtered_out_keys = set()
 		self.filtered_out = 0
 		self.equaled_out = 0
 		self.zeroed_out = 0
@@ -291,6 +294,7 @@ class Pod:
 				except:
 					print(fname, row)
 				if exclude_row(key, value):
+					self.filtered_out_keys.add(key)
 					continue
 				if 'P0(' in value:
 					histogram = value.split()
@@ -329,10 +333,10 @@ class Pod:
 			
 		self.equaled_out = 0
 		self.empty = 0
-		self.filtered_out = 0
 		self.unique = 0
 		self.zeroed_out = 0
 		self.anomalies = 0
+		self.filtered_out = len(self.filtered_out_keys)
 		for result in self.results.values():
 			result.equals_count = len(result.equals)
 			if result.anomalies:
@@ -345,8 +349,6 @@ class Pod:
 					self.anomaly_deviated += 1
 			if result.equaled_out:
 				self.equaled_out += 1
-			elif result.filtered_out:
-				self.filtered_out += 1
 			elif result.empty:
 				self.empty += 1
 			elif result.zeroed_out():
@@ -407,19 +409,19 @@ class Monitor:
 			pod.process_pod(files)
 		self.pods[self.current_pod].sort_top(self.sort_metric, 20, self.empty_filter)
 		self.display_screen(self.pods[self.current_pod], 20)
-	
+
 	def save_pods(self):
 		for pod in self.pods.values():
 			pod.matrix = {}
 			pod.stats = {}
 		with open(self.ref_file, 'wb') as output:
 			pickle.dump(self.pods, output, pickle.HIGHEST_PROTOCOL)
-		
+
 	def load_pods(self):
 		if isfile(join(self.ref_file)):
 			with open(self.ref_file, 'rb') as instream:
 				self.pods = pickle.load(instream)
-	
+
 	def display_top_table(self, pod, num_rows):
 		top_table = []
 		n = 0
@@ -433,13 +435,15 @@ class Monitor:
 		titles = deepcopy(Results.cols)
 		titles[titles.index(self.sort_column)] = self.sort_column.upper()
 		self.screen.addstr(tabulate(top_table, headers=titles, tablefmt="plain", floatfmt=".2f"))
-	
-	def display_anomalies_summary(self):
-		self.screen.addstr('\n\nPods anomalies:\n')
+
+	def display_pods_summary(self):
+		self.screen.addstr('Pods (use up and down arrows to shift focus of pods):\n')
 		for pod in self.pods.values():
-			self.screen.addstr(pod.name + ': ' + str(pod.anomalies) + ', Unequal: ' + str(pod.anomaly_unequal) + ', Maxed: ' +
-						str(pod.anomaly_maxed) + ', Deviated: ' + str(pod.anomaly_deviated) + '\n'
-	)
+			name = pod.name
+			if name == self.current_pod:
+				name = name.upper()
+			self.screen.addstr("    " + name.ljust(20) + "Node: " + pod.node + ', Anomalies: ' + str(pod.anomalies) + ', Unequal: ' + str(pod.anomaly_unequal) +
+						', Maxed: ' + str(pod.anomaly_maxed) + ', Deviated: ' + str(pod.anomaly_deviated) + '\n')
 	
 	def highlight(self, arr, key):
 		arr[arr.index(key)] = key.upper()
@@ -459,7 +463,7 @@ class Monitor:
 		self.screen.clear()
 		self.screen.addstr('Keys: "q" - exit, "l" - toggle learning/monitoring, "e" - toggle empty, "s" - save, arrows left/right - shift sorting\n')
 		self.screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + '\n')
-		self.screen.addstr('Pods: ' + self.highlight([*self.pods], self.current_pod) + ' press up or down to change pods\n')
+		self.display_pods_summary()
 		if pod:
 			self.screen.addstr('Pods: ' + str(len(self.pods)) + ' Metrics: ' + str(pod.metrics_count) + ' Series: ' + str(pod.series_count) +
 						' Unique: ' + str(pod.unique) + ' Empty: ' + str(pod.empty) +
@@ -467,7 +471,6 @@ class Monitor:
 						' Zeroed out: ' + str(pod.zeroed_out) + '\n')
 			#self.display_matrix(pod)
 			self.display_top_table(pod, num_rows)
-			self.display_anomalies_summary()
 		else:
 			self.screen.addstr('Processing')
 		self.screen.refresh()
@@ -527,8 +530,8 @@ class Monitor:
 
 # Emulation class to use instead of curses in IDE
 class Screen:
-	def addstr(self, str):
-		print(str)
+	def addstr(self, s):
+		print(s)
 	
 	def getch(self):
 		return -1 #raw_input()
