@@ -285,8 +285,8 @@ class Pod:
 		return key
 
 	@classmethod
-	def get_node(cls, timestamp, pod):
-		if not cls.pods_info.get(timestamp):
+	def get_node(cls, timestamp, pod_name):
+		if not Pod.pods_info.get(timestamp):
 			Pod.pods_info[timestamp] = {}
 			with open(join(Pod.path, 'pods.' + timestamp)) as f:
 				fcontents = f.read()
@@ -296,7 +296,7 @@ class Pod:
 					pod = row.split(':')[1].lstrip()
 					node = next(it).split(':')[1].lstrip()
 					Pod.pods_info[timestamp][pod] = node
-		return Pod.pods_info[timestamp][pod]
+		return Pod.pods_info[timestamp][pod_name]
 		
 	def read_envoy_data(self, fname):
 		with open(join(self.path, fname), 'r') as f:
@@ -357,6 +357,9 @@ class Pod:
 		self.unique = 0
 		self.zeroed_out = 0
 		self.anomalies = 0
+		self.anomaly_unequal = 0
+		self.anomaly_maxed = 0
+		self.anomaly_deviated = 0
 		self.filtered_out = len(self.filtered_out_keys)
 		for result in self.results.values():
 			result.equals_count = len(result.equals)
@@ -512,6 +515,7 @@ class Monitor:
 		self.current_pod = pods_arr[self.shift_index(self.current_pod, shift, pods_arr)]
 
 	def run(self):
+		global learning
 		self.screen.keypad(True)
 		self.screen.nodelay(1)
 		self.screen.addstr("Processing pods\n")
