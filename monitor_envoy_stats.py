@@ -227,10 +227,10 @@ class Results:
 			self.diff_dev = self.dev - self.ref_dev
 			self.diff_norm_dev = self.norm_dev - self.ref_norm_dev
 			if self.diff_max > self.ref_max * (1 + ANOMALY_MAX_THRESHOLD):
-				self.anomaly_max = self.diff_max
+				self.anomaly_maxed = self.diff_max
 				self.anomalies += 1
 			if self.diff_norm_dev > ANOMALY_DEVIATION_THRESHOLD:
-				self.anomaly_norm_deviated = self.diff_norm_dev
+				self.anomaly_deviated = self.diff_norm_dev
 				self.anomalies += 1
 
 
