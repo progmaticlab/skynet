@@ -12,6 +12,7 @@ from copy import deepcopy
 from curses import wrapper
 from os.path import isfile, join
 from tabulate import tabulate
+from platform import node
 
 EQUAL_ROWS_THRESHOLD = 0.05
 ANOMALY_MAX_THRESHOLD = 0.05
@@ -234,10 +235,14 @@ class Results:
 
 
 class Pod:
+	path = ''
+	pods_info = {}
+
 	def __init__(self, name, path):
+		Pod.path = path
 		self.name = name
+		self.full_name = ''
 		self.node = ''
-		self.path = path
 		self.stats = {}
 		self.results = {}
 		self.matrix = {}
@@ -279,13 +284,29 @@ class Pod:
 		key = key.replace('default.svc.cluster.local', 'd.s.c.l')
 		return key
 
+	@classmethod
+	def get_node(cls, timestamp, pod):
+		if not cls.pods_info.get(timestamp):
+			Pod.pods_info[timestamp] = {}
+			with open(join(Pod.path, 'pods.' + timestamp)) as f:
+				fcontents = f.read()
+				contents = fcontents.splitlines()
+				it = iter(contents)
+				for row in it:
+					pod = row.split(':')[1].lstrip()
+					node = next(it).split(':')[1].lstrip()
+					Pod.pods_info[timestamp][pod] = node
+		return Pod.pods_info[timestamp][pod]
+		
 	def read_envoy_data(self, fname):
 		with open(join(self.path, fname), 'r') as f:
 			fcontents = f.read()
 			contents = fcontents.splitlines()
-			timestamp = fname.split('.')[1]
+			pod_name, timestamp = fname.split('.')
+			self.full_name = pod_name
 			if not timestamp in self.stats:
 				self.stats[timestamp] = {}
+				self.node = Pod.get_node(timestamp, self.full_name)
 			for row in contents:
 				row_split = row.split(':')
 				try:
