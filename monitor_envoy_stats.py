@@ -31,18 +31,19 @@ def exclude_row(key, value):
 	return False
 
 class Results:
-	cols = ['name', 'nature', 'equals', 'anomalies', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval', 'd_equals', 'd_max', 'd_dev', 'd_ndev', 'start']
-	cols_props = {'name': 'name', 'nature': 'nature', 'start': 'start',
-				'equals': 'equals_count', 'min': 'min', 'avg': 'avg', 'max': 'max', 'dev': 'dev',
+	cols = ['name', 'kind', 'eq', 'anom', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval', 'd_eq', 'd_max', 'd_dev', 'd_ndev']
+	cols_props = {'name': 'name', 'kind': 'kind',
+				'eq': 'equals_count', 'min': 'min', 'avg': 'avg', 'max': 'max', 'dev': 'dev',
 				'navg': 'norm_avg', 'ndev': 'norm_dev', 'val': 'last_value', 'nval': 'norm_last_value',
-				'd_equals': 'diff_equals_count', 'd_max': 'diff_max', 'd_dev': 'diff_dev', 'd_ndev': 'diff_norm_dev',
-				'anomalies': 'anomalies'}
+				'd_eq': 'diff_equals_count', 'd_max': 'diff_max', 'd_dev': 'diff_dev', 'd_ndev': 'diff_norm_dev',
+				'anom': 'anomalies'}
+	# function tabulate_values holds the code collecting the values for the above columns
 	
-	def __init__(self, name, nature):
+	def __init__(self, name, kind):
 		# Name: name of the metric
 		self.name = name
-		# Nature: 'histo', 'counter', 'gauge' - counters are growing
-		self.nature = nature
+		# kind: 'histo', 'counter', 'gauge' - counters are growing
+		self.kind = kind
 		# Start: first number in sequence for counters
 		self.start = ''
 		# Counter: last increment of the counter
@@ -125,10 +126,10 @@ class Results:
 		return self.min == float('inf') or self.max == 0
 
 	def tabulate_values(self):
-		return [self.name, self.nature, self.equals_count, self.anomalies,
+		return [self.name, self.kind, self.equals_count, self.anomalies,
 				self.min, self.avg, self.max, self.dev,
 				self.norm_avg, self.norm_dev, self.last_value, self.norm_last_value,
-				self.diff_equals_count, self.diff_max, self.diff_dev, self.diff_norm_dev, self.start]
+				self.diff_equals_count, self.diff_max, self.diff_dev, self.diff_norm_dev]
 		
 	def is_equal(self, result):
 		return (abs(self.norm_last_value - result.norm_last_value) <= EQUAL_ROWS_THRESHOLD and
@@ -192,7 +193,7 @@ class Results:
 		value = float(value)
 		
 		# Normalize counters
-		if self.nature == 'counter':
+		if self.kind == 'C':
 			old_value = self.counter
 			if old_value:
 				self.counter = value
@@ -265,9 +266,9 @@ class Pod:
 		for result in self.results.values():
 			result.set_reference()
 
-	def add_value(self, key, value, empty, nature):
+	def add_value(self, key, value, empty, kind):
 		if not key in self.results:
-			result = Results(key, nature) 
+			result = Results(key, kind) 
 			self.results[key] = result
 		else:
 			result = self.results[key]
@@ -279,9 +280,17 @@ class Pod:
 		result.process_value(value)
 
 	def shorten(self, key):
-		key = key.replace('cluster.inbound', 'c.in')
-		key = key.replace('cluster.outbound', 'c.out')
-		key = key.replace('default.svc.cluster.local', 'd.s.c.l')
+		key = key.replace('cluster', 'c')
+		key = key.replace('listener', 'lsr')
+		key = key.replace('inbound', 'in')
+		key = key.replace('outbound', 'out')
+		key = key.replace('default', 'def')
+		key = key.replace('manager', 'm')
+		key = key.replace('server', 'srvr')
+		key = key.replace('socket', 'sckt')
+		key = key.replace('context', 'ctxt')
+		key = key.replace('factory', 'fctry')
+		key = key.replace('update', 'upd')
 		return key
 
 	@classmethod
@@ -324,14 +333,14 @@ class Pod:
 						if hval_split[0] in ['P0', 'P50', 'P100']:
 							hkey = key + '|' + hval_split[0]
 							self.stats[timestamp][key] = hval_split[1]
-							self.add_value(hkey, hval_split[1], 'nan', 'histo')
+							self.add_value(hkey, hval_split[1], 'nan', 'H')
 				else:
 					self.stats[timestamp][key] = value
 					if key.endswith('active') or key.endswith('buffered'):
-						nature = 'gauge'
+						kind = 'G'
 					else:
-						nature = 'counter'
-					self.add_value(key, value, ' No recorded values', nature)
+						kind = 'C'
+					self.add_value(key, value, ' No recorded values', kind)
 		self.files.add(fname)
 		self.series_count += 1
 		self.metrics_count = len(self.matrix.values())
@@ -382,7 +391,7 @@ class Pod:
 
 	def sort_top(self, sort_metric, num_rows, empty_filter):
 		self.top = []
-		if sort_metric in ['name', 'nature']:
+		if sort_metric in ['name', 'kind']:
 				init_value = ''
 		else:
 				init_value = -1
@@ -415,7 +424,7 @@ class Monitor:
 		self.args = args
 		self.pods = {}
 		self.refpods = {}
-		self.sort_column = 'equals'
+		self.sort_column = 'eq'
 		self.sort_metric = 'equals_count'
 		self.current_pod = ''
 		self.empty_filter = True

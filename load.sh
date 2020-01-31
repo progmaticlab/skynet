@@ -1,4 +1,3 @@
-source /Users/alevine/.basheditor/remote-debugging-v1.sh localhost 33333 #BASHEDITOR-TMP-REMOTE-DEBUGGING-END
 #!/bin/bash
 
 # $1 - Time in seconds or number of curls if sleep is 0
@@ -12,7 +11,7 @@ function request() {
         fi
         for ((i=0; i<n; i++))
         do
-                curl "http://10.50.10.185:31380/productpage"
+                curl "http://10.110.158.9:9080/productpage"
                 echo "Curling: ", $1, $2, $i
                 sleep $2
         done
@@ -27,4 +26,3 @@ do
 #        request 30 0.1
 #        request 30 0.01
 done
-q
