@@ -8,7 +8,7 @@ cpus_default=${cpus_default:-0}
 mem_default=${mem_default:-80}
 
 # time to load in sec
-timeout_default=${timeout_default:-10}
+timeout_default=${timeout_default:-1}
 
 my_file="$(readlink -e "$0")"
 my_dir="$(dirname $my_file)"
@@ -18,7 +18,7 @@ function usage(){
          "[--mem_cpus <num>]    # number of workers for memory stress (default equals to num of CPUs in system)\n" \
          "[--mem <percent>]     # % of free mem to use in memory stress (default is 80)\n" \
          "[--cpus <num>]        # number of cpu workers (default to 0, it is for case cpu stress only w/o mem stress - mem_cpus=0)\n" \
-         "[--timeout <secs>]    # time to test in seconds (default 10)\n"
+         "[--timeout <secs>]    # time to test in seconds (default 1)\n"
 }
 
 cpus=$cpus_default
