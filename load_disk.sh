@@ -1,3 +1,5 @@
 #!/bin/bash
 
-sudo dd if=/dev/sda of=/dev/null bs=4k count=1000000
+for (( i=0; i<2; i++ )); do
+    dd iflag=direct if=/host/disk_load.data of=/dev/null
+done

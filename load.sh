@@ -1,13 +1,14 @@
 #!/bin/bash
-
+echo "load $1" $(date +"%T.%N") > /host/load_time.log
 case $1 in
     'cpu')
-        /host/stress_cpu_mem.sh
+        /host/load_cpu_mem.sh
         ;;
     'net')
-        /host/stress_net.sh 
+        /host/load_net.sh 
         ;;
     'disk')
-        ./stress_disk.sh
+        /host/load_disk.sh
         ;;
 esac
+echo "load $1" $(date +"%T.%N") >> /host/load_time.log

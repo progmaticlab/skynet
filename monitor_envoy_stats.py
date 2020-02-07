@@ -3,6 +3,7 @@
 import argparse
 import curses
 import datetime
+import logging
 import math
 import os
 import pickle
@@ -20,7 +21,14 @@ ANOMALY_DEVIATION_THRESHOLD = 0.05
 
 learning = True
 
+gauges = ['_buffered', '_active', 'uptime', 'concurrency', '_allocated', '_size', '.live', '.state', '_connections',
+					'version', '_expiring', '_epoch', '_clusters', '_clusters', '_healthy','_degraded', '_total',	'_weight',
+					'.healthy', '_open', '_cx', '_pending', '_rq', '_retries', 	'.size', '_per_host', 'gradient', '_limit', 
+					'_size', '_msecs', '_faults', '_warming', '_draining', '_started', '_keys', '_layers', '.active', '_requests']
+
 exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer']
+
+logging.basicConfig(filename="monitor_envoy.log", level=logging.DEBUG)
 
 def exclude_row(key, value):
 	for exclude in exclude_keys:
@@ -130,7 +138,13 @@ class Results:
 				self.min, self.avg, self.max, self.dev,
 				self.norm_avg, self.norm_dev, self.last_value, self.norm_last_value,
 				self.diff_equals_count, self.diff_max, self.diff_dev, self.diff_norm_dev]
-		
+	
+	def is_gauge(key):
+		for item in gauges:
+			if key.endswith(item):
+				return True
+		return False
+	
 	def is_equal(self, result):
 		return (abs(self.norm_last_value - result.norm_last_value) <= EQUAL_ROWS_THRESHOLD and
 				abs(self.norm_avg - result.norm_avg) <= EQUAL_ROWS_THRESHOLD)
@@ -336,7 +350,7 @@ class Pod:
 							self.add_value(hkey, hval_split[1], 'nan', 'H')
 				else:
 					self.stats[timestamp][key] = value
-					if key.endswith('active') or key.endswith('buffered'):
+					if Results.is_gauge(key):
 						kind = 'G'
 					else:
 						kind = 'C'
@@ -413,6 +427,7 @@ class Pod:
 			if isfile(join(self.path, f)) and f.startswith(self.name) and not f in self.files:
 				#if self.series_count == 107:
 				#	quit()
+				logging.info("Processing pod file %s", f)
 				self.read_envoy_data(f)
 				self.process_last_series()
 				# break #Uncomment this break to process each existing series per second
@@ -429,6 +444,7 @@ class Monitor:
 		self.current_pod = ''
 		self.empty_filter = True
 		self.ref_file = ''
+		Pod.path = args.path
 
 	def process_pods(self, path, pod_names):
 		files = os.listdir(path)
@@ -444,6 +460,7 @@ class Monitor:
 		self.display_screen(self.pods[self.current_pod], 20)
 
 	def save_pods(self):
+		logging.info("Saving ref file to %s", self.ref_file)
 		for pod in self.pods.values():
 			pod.matrix = {}
 			pod.stats = {}
@@ -451,9 +468,12 @@ class Monitor:
 			pickle.dump(self.pods, output, pickle.HIGHEST_PROTOCOL)
 
 	def load_pods(self):
+		global learning
+		logging.info("Loading pods from %s", self.ref_file)
 		if isfile(join(self.ref_file)):
 			with open(self.ref_file, 'rb') as instream:
 				self.pods = pickle.load(instream)
+			learning = False
 
 	def display_top_table(self, pod, num_rows):
 		top_table = []
@@ -525,6 +545,7 @@ class Monitor:
 
 	def run(self):
 		global learning
+		logging.info("Running monitoring")
 		self.screen.keypad(True)
 		self.screen.nodelay(1)
 		self.screen.addstr("Processing pods\n")
