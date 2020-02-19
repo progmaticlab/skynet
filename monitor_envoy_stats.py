@@ -39,7 +39,7 @@ def exclude_row(key, value):
 	return False
 
 class Results:
-	cols = ['name', 'kind', 'eq', 'anom', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval', 'd_eq', 'd_max', 'd_dev', 'd_ndev']
+	cols = ['name', 'kind', 'eq', 'anom', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval']
 	cols_props = {'name': 'name', 'kind': 'kind',
 				'eq': 'equals_count', 'min': 'min', 'avg': 'avg', 'max': 'max', 'dev': 'dev',
 				'navg': 'norm_avg', 'ndev': 'norm_dev', 'val': 'last_value', 'nval': 'norm_last_value',
@@ -136,8 +136,8 @@ class Results:
 	def tabulate_values(self):
 		return [self.name, self.kind, self.equals_count, self.anomalies,
 				self.min, self.avg, self.max, self.dev,
-				self.norm_avg, self.norm_dev, self.last_value, self.norm_last_value,
-				self.diff_equals_count, self.diff_max, self.diff_dev, self.diff_norm_dev]
+				self.norm_avg, self.norm_dev, self.last_value, self.norm_last_value]
+				#self.diff_equals_count, self.diff_max, self.diff_dev, self.diff_norm_dev]
 	
 	def is_gauge(key):
 		for item in gauges:

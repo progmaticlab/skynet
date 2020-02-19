@@ -11,7 +11,7 @@ function request() {
         fi
         for ((i=0; i<n; i++))
         do
-                curl "http://10.110.158.9:9080/productpage"
+                curl "http://$GATEWAY_URL/productpage"
                 echo "Curling: ", $1, $2, $i
                 sleep $2
         done
