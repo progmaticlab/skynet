@@ -15,6 +15,8 @@ from os.path import isfile, join
 from tabulate import tabulate
 from platform import node
 
+import anomaly_graph
+
 EQUAL_ROWS_THRESHOLD = 0.05
 ANOMALY_MAX_THRESHOLD = 0.05
 ANOMALY_DEVIATION_THRESHOLD = 0.05
@@ -290,7 +292,10 @@ class Pod:
 			self.matrix[key] = []
 		if value == empty:
 			value = ''
-		self.matrix[key].append(value)
+			mvalue = 0
+		else:
+			mvalue = float(value)
+		self.matrix[key].append(mvalue)
 		result.process_value(value)
 
 	def shorten(self, key):
@@ -412,7 +417,7 @@ class Pod:
 		for i in range(0, num_rows):
 				self.top.append((None, init_value))
 		for metric, result in self.results.items():
-				if result.discard() and not empty_filter and not result.empty:
+				if result.discard() and not (result.empty and not empty_filter):
 						continue
 				value = result.get(sort_metric)
 				for i in range(0, num_rows):
@@ -511,10 +516,14 @@ class Monitor:
 				continue
 			top_table.append([item[0]] + item[1])
 		self.screen.addstr(tabulate(top_table, tablefmt="orgtbl"))
-	
+
+	def draw_graphs(self):
+		current_pod = self.pods[self.current_pod]
+		anomaly_graph.draw_graphs(current_pod.matrix, current_pod.name, [i[0] for i in current_pod.top])
+
 	def display_screen(self, pod, num_rows):
 		self.screen.clear()
-		self.screen.addstr('Keys: "q" - exit, "l" - toggle learning/monitoring, "e" - toggle empty, "s" - save, arrows left/right - shift sorting\n')
+		self.screen.addstr('Keys: "q" - exit, "l" - learning/monitoring, "e" - empty on/off, "s" - save, "g" - create graphs, arrows left/right - shift sorting\n')
 		self.screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + '\n')
 		self.display_pods_summary()
 		if pod:
@@ -579,6 +588,8 @@ class Monitor:
 					learning = not learning
 					for pod in self.pods.values():
 						pod.set_reference()
+				if key == ord('g'):
+					self.draw_graphs()
 				self.screen.refresh()
 				if key == -1 or key == ord('q'):
 					break
@@ -589,7 +600,7 @@ class Screen:
 		print(s)
 	
 	def getch(self):
-		return -1 #raw_input()
+		return -1
 	
 	def clear(self):
 		pass
