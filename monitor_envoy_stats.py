@@ -23,6 +23,8 @@ ANOMALY_DEVIATION_THRESHOLD = 0.05
 
 learning = True
 
+DISPLAY_REFRESH_FREQUENCY = 5
+
 gauges = ['_buffered', '_active', 'uptime', 'concurrency', '_allocated', '_size', '.live', '.state', '_connections',
 					'version', '_expiring', '_epoch', '_clusters', '_clusters', '_healthy','_degraded', '_total',	'_weight',
 					'.healthy', '_open', '_cx', '_pending', '_rq', '_retries', 	'.size', '_per_host', 'gradient', '_limit', 
@@ -566,7 +568,7 @@ class Monitor:
 		key = -1
 		while key != ord('q'):
 			key = -1
-			time.sleep(1)
+			time.sleep(DISPLAY_REFRESH_FREQUENCY)
 			self.process_pods(self.args.path, self.args.pods)
 			while True:
 				key = self.screen.getch()
