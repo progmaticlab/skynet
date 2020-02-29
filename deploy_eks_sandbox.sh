@@ -4,8 +4,8 @@ set -e
 
 NC='\e[0m'
 GREEN='\e[92m'
-CLUSTER_NAME=istio-demo-cluster-no2
-CONTEXT_NAME=istio-demo
+CLUSTER_NAME=${CLUSTER_NAME:-'istio-demo-cluster-no1'}
+CONTEXT_NAME=${CONTEXT_NAME:-'istio-demo'}
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 
 if [[ -z ${SSH_PUBLIC_KEY} ]]
@@ -16,8 +16,10 @@ then
 	echo
 fi
 
-echo -e "${GREEN}Install AWS cli${NC}"
-pip3 install awscli --upgrade --user
+if [ ! -f ~/.local/bin/aws ] ; then
+	echo -e "${GREEN}Install AWS cli${NC}"
+	pip3 install awscli --upgrade --user
+fi
 
 if ! [[ -e ~/.aws/config ]]
 then
@@ -29,21 +31,35 @@ fi
 echo
 echo -e "${GREEN}Download kube tools for AWS${NC}"
 b=$(pwd)/.sandbox/
-rm -rf $b
+# Think of cleanup ?
+# rm -rf $b
 mkdir -p $b
 PATH=$PATH:$b
-curl -o $b/kubectl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
-curl -o $b/aws-iam-authenticator https://amazon-eks.s3-us-west-2.amazonaws.com/1.14.6/2019-08-22/bin/linux/amd64/aws-iam-authenticator
-curl --silent --location "https://github.com/weaveworks/eksctl/releases/download/latest_release/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C $b
 
-chmod u+x $b/kubectl $b/eksctl $b/aws-iam-authenticator
+if [[ ! -f $b/kubectl ]] ; then
+	curl -o $b/kubectl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+	chmod u+x $b/kubectl
+fi
+if [[ ! -f $b/aws-iam-authenticator ]] ; then
+	curl -o $b/aws-iam-authenticator https://amazon-eks.s3-us-west-2.amazonaws.com/1.14.6/2019-08-22/bin/linux/amd64/aws-iam-authenticator
+	chmod u+x $b/aws-iam-authenticator
+fi
+if [[ ! -f $b/eksctl ]] ; then
+	curl --silent --location "https://github.com/weaveworks/eksctl/releases/download/latest_release/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C $b
+	chmod u+x $b/eksctl
+fi
+
 $b/kubectl config set-context ${CONTEXT_NAME} --cluster=${CLUSTER_NAME}
 $b/kubectl config use-context ${CONTEXT_NAME}
 
 pushd $b
 echo
-echo -e "${GREEN}Download istio${NC}"
-curl -L https://istio.io/downloadIstio | sh -
+
+if ! ls istio-* > /dev/null 2>&1 ; then
+	echo -e "${GREEN}Download istio${NC}"
+	curl -L https://istio.io/downloadIstio | sh -
+fi
+
 pushd istio-*
 
 (

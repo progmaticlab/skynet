@@ -221,7 +221,7 @@ class Pod:
 					key = row_split[0]
 					value = row_split[1]
 				except:
-					print fname, row
+					print(fname, row)
 				if exclude_row(key, value):
 					continue
 				if 'P0(' in value:
