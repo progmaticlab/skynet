@@ -109,3 +109,19 @@ Run test load (in separate terminal)
 ``` bash
 ./request.sh
 ```
+
+## Demo
+
+It's supposed that pwd is this cloned repo from where you run scripts.
+Run the script to deploy test environment inside AWS, follow instructions
+
+``` bash
+bash ./deploy_eks_sandbox.sh
+```
+
+Run another script to experiment with the deployed application. Execution
+should start from the folder of a successful deploy_eks_sandbox.sh run.
+
+``` bash
+bash ./demo_inside_eks_sandbox.sh
+```
