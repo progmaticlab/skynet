@@ -765,6 +765,6 @@ def main():
 		Background(args).run()
 	else:
 		# Use this wrapper to run in top-like mode
-		wrapper(run, args)
+		wrapper(lambda x_, y_: Monitor(x_, y_).run(), args)
 
 main()
