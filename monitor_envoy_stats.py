@@ -8,7 +8,12 @@ import math
 import os
 import pickle
 import re
+import sys
+import json
 import time
+import fcntl
+import select
+import threading
 from copy import deepcopy
 from curses import wrapper
 from os.path import isfile, join
@@ -454,8 +459,7 @@ class Monitor:
 		Pod.path = args.path
 
 	def process_pods(self, path, pod_names):
-		files = os.listdir(path)
-		files.sort()
+		files = sorted(os.listdir(path), key=lambda x_: x_.split('.')[1])
 		for pod_name in pod_names:
 			pod = self.pods.get(pod_name)
 			if pod == None:
@@ -554,6 +558,7 @@ class Monitor:
 		pods_arr = [*self.pods]
 		self.current_pod = pods_arr[self.shift_index(self.current_pod, shift, pods_arr)]
 
+	
 	def run(self):
 		global learning
 		logging.info("Running monitoring")
@@ -616,19 +621,150 @@ class Screen:
 	def nodelay(self, delay):
 		pass
 
-def run(stdscr, args):
-	monitor = Monitor(stdscr, args)
-	monitor.run()
+class Servant:
+	def __init__(self, monitor_):
+		self.monitor = monitor_
+
+	def save(self, json_):
+		logging.error('Save the pods')
+		self.monitor.save_pods()
+
+		return True
+
+	def toggle_learning(self, json_):
+		global learning
+
+		learning = not learning
+		for pod in self.monitor.pods.values():
+			pod.set_reference()
+
+		return True
+
+	def quit(self, json_):
+		return False
+
+	def _set_value(self, request_, value_):
+		if 'promise' not in request_:
+			logging.error("There is no promise element. Don't know where to store the result")
+			return False
+
+		f = open(request_["promise"], "w")
+		try:
+			f.write(json.dumps(value_))
+		finally:
+			f.close()
+
+		return True
+
+	def is_learning(self, json_):
+		global learning
+
+		return self._set_value(json_, {"learning": learning})
+
+	def list_anomalies(self, json_):
+		R = []
+		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
+			R.append({"name": p.full_name, "count": p.anomaly_maxed})
+
+		return self._set_value(json_, R)
+
+class Background(Monitor):
+	def __init__(self, args_):
+		super().__init__(Screen(), args_)
+		self.sort_column = 'anom'
+		self.sort_metric = 'anomalies'
+
+	def _loop(self, quit_):
+		while not quit_.wait(DISPLAY_REFRESH_FREQUENCY):
+			self.process_pods(self.args.path, self.args.pods)
+
+	def _despatch(self, json_):
+		if not json_:
+			logging.error('Invalid JSON command object')
+			return False
+
+		if 'command' not in json_:
+			logging.error('There is no command element')
+			return False
+
+		c = json_['command']
+		o = getattr(Servant(self), c, None)
+		if not callable(o):
+			logging.error('Bad command name')
+			return False
+
+		return o(json_)
+
+	def display_screen(self, pod, num_rows):
+		pass
+
+	def run(self):
+		logging.info("Running monitoring")
+		if self.args.reffile:
+			self.ref_file = self.args.reffile
+			self.load_pods()
+		self.current_pod = self.args.pods[0]
+		E = threading.Event()
+		w = threading.Thread(target=self._loop, args=[E])
+		w.start()
+
+		B = []
+		G = True
+		H = sys.stdin.fileno()
+		F = fcntl.fcntl(H, fcntl.F_GETFL)
+		fcntl.fcntl(H, fcntl.F_SETFL, F | os.O_NONBLOCK)
+
+		while G:
+			p = select.poll()
+			p.register(H, select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR)
+			b = None
+			try:
+				for h, f in p.poll():
+					if f & (select.POLLIN | select.POLLPRI):
+						b = os.read(h, 1024)
+					else:
+						break
+			except KeyboardInterrupt:
+				pass
+
+			# TODO: need a check for the buffer to large say more than 1024
+			if not b or len(b) == 0:
+				break
+
+			B.extend(b)
+			while True:
+				p = None
+				try:
+					p = B.index(0)
+				except ValueError:
+					break
+
+				Q = None
+				try:
+					Q = json.loads(bytearray(B[0:p]).decode())
+				except json.decoder.JSONDecodeError:
+					pass
+
+				if not self._despatch(Q):
+					G = False
+					break
+
+				del B[0:p + 1]
+
+		E.set()
+		w.join()
 
 def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('path', help='metrics dir')
 	parser.add_argument('-r', '--reffile', help='reference model file')
 	parser.add_argument('-p', '--pods', help='list of pods', nargs='+')
+	parser.add_argument('-B', '--background', help='enables background mode', action='store_true')
 	args = parser.parse_args()
-	# Use this wrapper to run in top-like mode
-	wrapper(run, args)
-	# Use direct run for console sequential output for debugging purposes
-	#run(Screen(), args)
+	if args.background:
+		Background(args).run()
+	else:
+		# Use this wrapper to run in top-like mode
+		wrapper(run, args)
 
 main()
