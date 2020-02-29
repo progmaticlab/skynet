@@ -161,6 +161,12 @@ class Results:
 	def normalize(self, value):
 		return value / self.max
 	
+	def react_reset(self):
+		self.anomalies = 0
+		self.anomaly_unequal = 0
+		self.anomaly_maxed = 0
+		self.anomaly_deviated = 0
+
 	def set_reference(self):
 		self.ref_count = self.count
 		self.ref_equals_count = self.equals_count
@@ -171,10 +177,7 @@ class Results:
 		self.diff_max = 0.0
 		self.diff_dev = 0.0
 		self.diff_norm_dev = 0.0
-		self.anomalies = 0
-		self.anomaly_unequal = 0
-		self.anomaly_maxed = 0
-		self.anomaly_deviated = 0
+		self.react_reset()
 
 	# Verifies if result is still equaled out by its primary equal and removes equality if not
 	def verify_equaled_out(self):
@@ -338,7 +341,11 @@ class Pod:
 			fcontents = f.read()
 			contents = fcontents.splitlines()
 			pod_name, timestamp = fname.split('.')
-			self.full_name = pod_name
+			if self.full_name != pod_name:
+				self.full_name = pod_name
+				for result in self.results.values():
+					result.react_reset()
+
 			if not timestamp in self.stats:
 				self.stats[timestamp] = {}
 				self.node = Pod.get_node(timestamp, self.full_name)
@@ -727,10 +734,10 @@ class Background(Monitor):
 			except KeyboardInterrupt:
 				pass
 
-			# TODO: need a check for the buffer to large say more than 1024
 			if not b or len(b) == 0:
 				break
 
+			# TODO: need a check for the buffer is too large say more than 1024
 			B.extend(b)
 			while True:
 				p = None
