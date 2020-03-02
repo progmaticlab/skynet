@@ -8,7 +8,7 @@ do
 	do 
 		#kubectl exec -it $pod  -c istio-proxy  -- sh -c 'curl localhost:15000/stats' | gzip > $pod.$d.gz
 		echo "Storing data for pod $pod"
-		kubectl exec -it $pod  -c istio-proxy  -- sh -c 'curl localhost:15000/stats' > $pod.$d
+		kubectl exec $pod  -c istio-proxy  -- sh -c 'curl localhost:15000/stats | grep 9080' > $pod.$d
 	done
 	sleep 5
 done
