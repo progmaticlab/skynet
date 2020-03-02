@@ -20,7 +20,7 @@ from os.path import isfile, join
 from tabulate import tabulate
 from platform import node
 
-import anomaly_graph
+import anomaly_graph as ml
 
 EQUAL_ROWS_THRESHOLD = 0.05
 ANOMALY_MAX_THRESHOLD = 0.05
@@ -35,17 +35,49 @@ gauges = ['_buffered', '_active', 'uptime', 'concurrency', '_allocated', '_size'
 					'.healthy', '_open', '_cx', '_pending', '_rq', '_retries', 	'.size', '_per_host', 'gradient', '_limit', 
 					'_size', '_msecs', '_faults', '_warming', '_draining', '_started', '_keys', '_layers', '.active', '_requests']
 
-exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer']
+exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer', 'rq_timeout']
+include_keys = ['rq_time']
 
-logging.basicConfig(filename="monitor_envoy.log", level=logging.DEBUG)
+class GeneralLogLevelFilter(object):
+	def filter(self, record_):
+		return record_.levelno < logging.ERROR
+
+logging.basicConfig(level = logging.NOTSET)
+general_logger = logging.getLogger('general_logger')
+general_formater = logging.Formatter('%(asctime)s.%(msecs)03d %(levelname)s %(thread)d: %(message)s', datefmt='%m-%d %H:%M:%S')
+error_handler = logging.FileHandler('monitor_envoy_error.log')
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(general_formater)
+general_handler = logging.FileHandler('monitor_envoy.log')
+general_handler.setLevel(logging.NOTSET)
+general_handler.addFilter(GeneralLogLevelFilter())
+general_handler.setFormatter(general_formater)
+general_logger.setLevel(logging.NOTSET)
+general_logger.addHandler(error_handler)
+general_logger.addHandler(general_handler)
+
+monitor = None
 
 def exclude_row(key, value):
 	for exclude in exclude_keys:
 		if exclude in key:
 			return True
-	#if not '9080' in key:
-	#	return True
-	return False
+	if not '9080' in key:
+		return True
+	for include in include_keys:
+		if include in key:
+			return False
+	return True
+
+def process_ml(filter=''):
+	global monitor
+	general_logger.info("Starting ML processing")
+	while True:
+		try:
+			monitor.ml_anomalies = ml.process_anomalies(general_logger, filter)
+		except Exception as e:
+			general_logger.error("ERROR in ML thread: " + str(e))
+		time.sleep(1)
 
 class Results:
 	cols = ['name', 'kind', 'eq', 'anom', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval']
@@ -131,6 +163,7 @@ class Results:
 		self.anomaly_unequal = 0
 		self.anomaly_maxed = 0
 		self.anomaly_deviated = 0
+		self.anomaly_ml = 0
 
 
 	def get(self, prop):
@@ -161,11 +194,16 @@ class Results:
 	def normalize(self, value):
 		return value / self.max
 	
-	def react_reset(self):
+	def return_to_normal(self):
+		self.diff_equals_count = self.ref_equals_count
+		self.diff_max = self.ref_max
+		self.diff_dev = self.ref_dev
+		self.diff_norm_dev = self.ref_norm_dev
 		self.anomalies = 0
 		self.anomaly_unequal = 0
 		self.anomaly_maxed = 0
 		self.anomaly_deviated = 0
+		self.anomaly_ml = 0
 
 	def set_reference(self):
 		self.ref_count = self.count
@@ -177,7 +215,11 @@ class Results:
 		self.diff_max = 0.0
 		self.diff_dev = 0.0
 		self.diff_norm_dev = 0.0
-		self.react_reset()
+		self.anomalies = 0
+		self.anomaly_unequal = 0
+		self.anomaly_maxed = 0
+		self.anomaly_deviated = 0
+		self.anomaly_ml = 0
 
 	# Verifies if result is still equaled out by its primary equal and removes equality if not
 	def verify_equaled_out(self):
@@ -260,6 +302,13 @@ class Results:
 				self.anomaly_deviated = self.diff_norm_dev
 				self.anomalies += 1
 
+			if self.name in ml.anomalies_found:
+				self.anomaly_ml = 1
+				self.anomalies += 1
+			elif self.anomaly_ml == 1:
+				self.anomaly_ml = 0
+				self.anomalies -= 1
+
 
 class Pod:
 	path = ''
@@ -270,6 +319,7 @@ class Pod:
 		self.name = name
 		self.full_name = ''
 		self.node = ''
+		self.processed_files = 0
 		self.stats = {}
 		self.results = {}
 		self.matrix = {}
@@ -287,12 +337,18 @@ class Pod:
 		self.anomaly_unequal = 0
 		self.anomaly_maxed = 0
 		self.anomaly_deviated = 0
+		self.anomaly_ml = 0
+
+	def return_to_normal(self):
+		for result in self.results.values():
+			result.return_to_normal()
 
 	def set_reference(self):
 		for result in self.results.values():
 			result.set_reference()
 
 	def add_value(self, key, value, empty, kind):
+		global monitor
 		if not key in self.results:
 			result = Results(key, kind) 
 			self.results[key] = result
@@ -300,12 +356,14 @@ class Pod:
 			result = self.results[key]
 		if not key in self.matrix:
 			self.matrix[key] = []
+			monitor.global_matrix[key] = []
 		if value == empty:
 			value = ''
 			mvalue = 0
 		else:
 			mvalue = float(value)
 		self.matrix[key].append(mvalue)
+		monitor.global_matrix[key].append(mvalue)
 		result.process_value(value)
 
 	def shorten(self, key):
@@ -321,6 +379,9 @@ class Pod:
 		key = key.replace('factory', 'fctry')
 		key = key.replace('update', 'upd')
 		return key
+
+	def generate_key(self, key):
+		return self.name + '|' + self.shorten(key)
 
 	@classmethod
 	def get_node(cls, timestamp, pod_name):
@@ -343,8 +404,7 @@ class Pod:
 			pod_name, timestamp = fname.split('.')
 			if self.full_name != pod_name:
 				self.full_name = pod_name
-				for result in self.results.values():
-					result.react_reset()
+				self.return_to_normal()
 
 			if not timestamp in self.stats:
 				self.stats[timestamp] = {}
@@ -352,10 +412,11 @@ class Pod:
 			for row in contents:
 				row_split = row.split(':')
 				try:
-					key = self.shorten(row_split[0])
+					key = self.generate_key(row_split[0])
 					value = row_split[1]
-				except:
-					print(fname, row)
+				except Exception as e:
+					general_logger.error("ERROR parsing value: %s %s %s", fname, row, e)
+					continue
 				if exclude_row(key, value):
 					self.filtered_out_keys.add(key)
 					continue
@@ -363,7 +424,7 @@ class Pod:
 					histogram = value.split()
 					for hval in histogram:
 						hval_split = re.split('[(,)]', hval)
-						if hval_split[0] in ['P0', 'P50', 'P100']:
+						if hval_split[0] in ['P75', 'P99']:
 							hkey = key + '|' + hval_split[0]
 							self.stats[timestamp][key] = hval_split[1]
 							self.add_value(hkey, hval_split[1], 'nan', 'H')
@@ -402,6 +463,7 @@ class Pod:
 		self.anomaly_unequal = 0
 		self.anomaly_maxed = 0
 		self.anomaly_deviated = 0
+		self.anomaly_ml = 0
 		self.filtered_out = len(self.filtered_out_keys)
 		for result in self.results.values():
 			result.equals_count = len(result.equals)
@@ -413,6 +475,8 @@ class Pod:
 					self.anomaly_maxed += 1
 				if result.anomaly_deviated:
 					self.anomaly_deviated += 1
+				if result.anomaly_ml:
+					self.anomaly_ml += 1
 			if result.equaled_out:
 				self.equaled_out += 1
 			elif result.empty:
@@ -444,16 +508,17 @@ class Pod:
 	def process_pod(self, files):
 		for f in files:
 			if isfile(join(self.path, f)) and f.startswith(self.name) and not f in self.files:
-				#if self.series_count == 107:
-				#	quit()
-				logging.info("Processing pod file %s", f)
+				general_logger.info("Processing pod file %s", f)
 				self.read_envoy_data(f)
 				self.process_last_series()
+				self.processed_files += 1
 				# break #Uncomment this break to process each existing series per second
 
 class Monitor:
 	
 	def __init__(self, screen, args):
+		global monitor
+
 		self.screen = screen
 		self.args = args
 		self.pods = {}
@@ -463,22 +528,37 @@ class Monitor:
 		self.current_pod = ''
 		self.empty_filter = True
 		self.ref_file = ''
+		self.ml_anomalies = ''
+		self.global_matrix = {}
 		Pod.path = args.path
+		for pod_name in self.args.pods:
+			self.pods[pod_name] = Pod(pod_name, args.path)
+
+		monitor = self
+
+	def is_matrix_even(self):
+		val_count = 0
+		for key, vals in self.global_matrix.items():
+			if val_count == 0:
+				val_count = len(vals)
+			elif val_count != len(vals):
+				return False
+		return True
 
 	def process_pods(self, path, pod_names):
 		files = sorted(os.listdir(path), key=lambda x_: x_.split('.')[1])
 		for pod_name in pod_names:
-			pod = self.pods.get(pod_name)
-			if pod == None:
-				pod = Pod(pod_name, path)
-				self.pods[pod_name] = pod
-				self.display_screen(None, 20)			
-			pod.process_pod(files)
+			self.pods.get(pod_name).process_pod(files)
+
+		# Check that equal files are processed and update ML in this case
+		if self.is_matrix_even():
+			ml.update_matrix(self.global_matrix)
+
 		self.pods[self.current_pod].sort_top(self.sort_metric, 20, self.empty_filter)
 		self.display_screen(self.pods[self.current_pod], 20)
 
 	def save_pods(self):
-		logging.info("Saving ref file to %s", self.ref_file)
+		general_logger.info("Saving ref file to %s", self.ref_file)
 		for pod in self.pods.values():
 			pod.matrix = {}
 			pod.stats = {}
@@ -487,7 +567,7 @@ class Monitor:
 
 	def load_pods(self):
 		global learning
-		logging.info("Loading pods from %s", self.ref_file)
+		general_logger.info("Loading pods from %s", self.ref_file)
 		if isfile(join(self.ref_file)):
 			with open(self.ref_file, 'rb') as instream:
 				self.pods = pickle.load(instream)
@@ -514,7 +594,7 @@ class Monitor:
 			if name == self.current_pod:
 				name = name.upper()
 			self.screen.addstr("    " + name.ljust(20) + "Node: " + pod.node + ', Anomalies: ' + str(pod.anomalies) + ', Unequal: ' + str(pod.anomaly_unequal) +
-						', Maxed: ' + str(pod.anomaly_maxed) + ', Deviated: ' + str(pod.anomaly_deviated) + '\n')
+						', Maxed: ' + str(pod.anomaly_maxed) + ', Deviated: ' + str(pod.anomaly_deviated) + ', ML: ' + str(pod.anomaly_ml) + '\n')
 	
 	def highlight(self, arr, key):
 		arr[arr.index(key)] = key.upper()
@@ -536,8 +616,9 @@ class Monitor:
 
 	def display_screen(self, pod, num_rows):
 		self.screen.clear()
-		self.screen.addstr('Keys: "q" - exit, "l" - learning/monitoring, "e" - empty on/off, "s" - save, "g" - create graphs, arrows left/right - shift sorting\n')
-		self.screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + '\n')
+		self.screen.addstr('Keys: "q" - exit, "l" - learning/monitoring, "e" - empty on/off, "s" - save, "d" - draw all on/off, arrows left/right - shift sorting\n')
+		self.screen.addstr(str(datetime.datetime.now()) + ' Learning: ' + str(learning) + ' ML: ' + str(len(ml.anomalies_found)) + ' progress: ' + ml.progress +
+			' processing: ' + ml.processed_column + '\n')
 		self.display_pods_summary()
 		if pod:
 			self.screen.addstr('Pods: ' + str(len(self.pods)) + ' Metrics: ' + str(pod.metrics_count) + ' Series: ' + str(pod.series_count) +
@@ -548,6 +629,7 @@ class Monitor:
 			self.display_top_table(pod, num_rows)
 		else:
 			self.screen.addstr('Processing')
+		self.screen.addstr('\n' + ml.anomaly_info)
 		self.screen.refresh()
 	
 	def shift_index(self, key, shift, arr):
@@ -565,19 +647,33 @@ class Monitor:
 		pods_arr = [*self.pods]
 		self.current_pod = pods_arr[self.shift_index(self.current_pod, shift, pods_arr)]
 
-	
-	def run(self):
-		global learning
-		logging.info("Running monitoring")
-		self.screen.keypad(True)
-		self.screen.nodelay(1)
-		self.screen.addstr("Processing pods\n")
-		self.screen.refresh()
+	def warm_up(self):
 		if self.args.reffile:
 			self.ref_file = self.args.reffile
 			self.load_pods()
 		self.current_pod = self.args.pods[0]		
+		general_logger.info("Starting ML thread(s)")
+		if self.args.multithreading:
+			column_filters = self.args.pods
+		else:
+			column_filters = ['']
+		ml_threads = {}
+		for filter in column_filters:
+			ml_threads[filter] = threading.Thread(target=process_ml, args=(filter,))
+			ml_threads[filter].daemon = True
+			ml_threads[filter].start()
+		self.process_pods(self.args.path, self.args.pods)
+
+	def run(self):
+		global learning
+		general_logger.info("Running monitoring")
+		self.screen.keypad(True)
+		self.screen.nodelay(1)
+		self.screen.addstr("Processing pods\n")
+		self.screen.refresh()
 		key = -1
+		self.warm_up()
+		self.display_screen(None, 20)
 		while key != ord('q'):
 			key = -1
 			time.sleep(DISPLAY_REFRESH_FREQUENCY)
@@ -600,13 +696,17 @@ class Monitor:
 					self.save_pods()
 				if key == ord('l'):
 					learning = not learning
+					ml.processing = not learning
 					for pod in self.pods.values():
 						pod.set_reference()
 				if key == ord('g'):
 					self.draw_graphs()
+				if key == ord('d'):
+					ml.draw_all = not ml.draw_all
 				self.screen.refresh()
 				if key == -1 or key == ord('q'):
 					break
+		exit(0)
 
 # Emulation class to use instead of curses in IDE
 class Screen:
@@ -614,7 +714,7 @@ class Screen:
 		print(s)
 	
 	def getch(self):
-		return -1
+		return ord('g')
 	
 	def clear(self):
 		pass
@@ -633,7 +733,7 @@ class Servant:
 		self.monitor = monitor_
 
 	def save(self, json_):
-		logging.error('Save the pods')
+		general_logger.error('Save the pods')
 		self.monitor.save_pods()
 
 		return True
@@ -642,6 +742,7 @@ class Servant:
 		global learning
 
 		learning = not learning
+		ml.processing = not learning
 		for pod in self.monitor.pods.values():
 			pod.set_reference()
 
@@ -652,7 +753,7 @@ class Servant:
 
 	def _set_value(self, request_, value_):
 		if 'promise' not in request_:
-			logging.error("There is no promise element. Don't know where to store the result")
+			general_logger.error("There is no promise element. Don't know where to store the result")
 			return False
 
 		f = open(request_["promise"], "w")
@@ -675,6 +776,13 @@ class Servant:
 
 		return self._set_value(json_, R)
 
+	def reset_anomalies(self, json_):
+		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
+			p.return_to_normal()
+
+		return True
+		
+
 class Background(Monitor):
 	def __init__(self, args_):
 		super().__init__(Screen(), args_)
@@ -687,17 +795,17 @@ class Background(Monitor):
 
 	def _despatch(self, json_):
 		if not json_:
-			logging.error('Invalid JSON command object')
+			general_logger.error('Invalid JSON command object')
 			return False
 
 		if 'command' not in json_:
-			logging.error('There is no command element')
+			general_logger.error('There is no command element')
 			return False
 
 		c = json_['command']
 		o = getattr(Servant(self), c, None)
 		if not callable(o):
-			logging.error('Bad command name')
+			general_logger.error('Bad command name')
 			return False
 
 		return o(json_)
@@ -706,11 +814,9 @@ class Background(Monitor):
 		pass
 
 	def run(self):
-		logging.info("Running monitoring")
-		if self.args.reffile:
-			self.ref_file = self.args.reffile
-			self.load_pods()
-		self.current_pod = self.args.pods[0]
+		general_logger.info("Running monitoring")
+		super().warm_up()
+
 		E = threading.Event()
 		w = threading.Thread(target=self._loop, args=[E])
 		w.start()
@@ -767,6 +873,7 @@ def main():
 	parser.add_argument('-r', '--reffile', help='reference model file')
 	parser.add_argument('-p', '--pods', help='list of pods', nargs='+')
 	parser.add_argument('-B', '--background', help='enables background mode', action='store_true')
+	parser.add_argument('-m', '--multithreading', action='store_true', help='multithreading ml')
 	args = parser.parse_args()
 	if args.background:
 		Background(args).run()
