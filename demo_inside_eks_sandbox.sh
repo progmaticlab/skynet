@@ -8,7 +8,9 @@ BOLD='\e[1m'
 CYAN='\e[96m'
 PATH=$PATH:$BOX
 GREEN='\e[92m'
+CURSOR_MUTEX=$BOX/.cursor
 HEALER_MUTEX=$BOX/.healer
+MONITOR_MUTEX=$BOX/.monitor
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 MONITOR_TRANSPORT=$BOX/.transport
 
@@ -24,6 +26,14 @@ function rip() {
 
 function make_uuid() {
 	python -c "import uuid; print(uuid.uuid1())"
+}
+
+function protect_cursor() {
+	local g
+	exec {g}> ${CURSOR_MUTEX}
+	flock -x $g
+	$*
+	eval "exec ${g}>&-"
 }
 
 B=(no yes)
@@ -70,7 +80,7 @@ function toggle_loading() {
 		GATEWAY_URL="$HOST_PORT" bash "${SKYNET}/request.sh" 2>/dev/null 1>&2 &
 		LC=$!
 	else
-		rip "LC"
+		stop_loading
 	fi
 }
 
@@ -106,12 +116,12 @@ echo "\$s: load \$1" \$(date +"%T.%N") >> /host/load_time.log
 if [[ 1 -eq \${Sv1} ]] && [[ "\${SERVICE_VERSION}" == 'v1' ]]
 then
 	echo "\$s: SLEEP" \$(date +"%T.%N") >> /host/load_time.log
-	sleep 1
+	sleep 2
 fi
 if [[ 1 -eq \${Sv2} ]] && [[ "\${SERVICE_VERSION}" == 'v2' ]]
 then
 	echo "\$s: SLEEP" \$(date +"%T.%N") >> /host/load_time.log
-	sleep 1
+	sleep 3
 fi
 echo "\$s: load \$1" \$(date +"%T.%N") >> /host/load_time.log
 LOADSH
@@ -140,10 +150,11 @@ function query_anomalies() {
 	local f=$BOX/$(make_uuid)
 	mkfifo $f
 
-	local h
-	exec {h}>${MONITOR_TRANSPORT}
-	flock -x ${h}
+	local g
+	exec {g}<${MONITOR_MUTEX}
+	flock -x ${g}
 	printf "{\"command\": \"list_anomalies\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
+	eval "exec ${g}<&-"
 
 	local j=$(< $f)
 	rm -f $f
@@ -151,17 +162,15 @@ function query_anomalies() {
 	printf '%s' $j
 }
 
-function pull_anomalies() {
-	local j=$(query_anomalies)
-	if [[ 0 -ne $? ]]; then return 0; fi
-
+function show_anomalies() {
+	local j=$1
 	local a=($(printf '%s' $j | jq '.[].name' | tr -d '"'))
 	local b=($(printf '%s' $j | jq '.[].count' | tr -d '"'))
 
 	for((i=0;i<8;++i))
 	do
 		local k=$((i + 4))
-		printf "\033[s\033[${k};42H\033[K\033[u";
+		printf "\033[s\033[${k};42H\033[K\033[u"
 	done
 	for i in ${!a[*]}
 	do
@@ -170,14 +179,25 @@ function pull_anomalies() {
 	done
 }
 
+function pull_anomalies() {
+	local j=$(query_anomalies)
+	if [[ 0 -eq $? ]]
+	then
+		protect_cursor show_anomalies $j
+	fi
+}
+
 function pull_learning_status() {
 	if [[ 0 -lt ${MX} ]]
 	then
 		local f=$BOX/$(make_uuid)
 		mkfifo $f
-		flock -x ${MONITOR_CHANNEL}
+
+		local g
+		exec {g}<${MONITOR_MUTEX}
+		flock -x ${g}
 		printf "{\"command\": \"is_learning\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
-		flock -u ${MONITOR_CHANNEL}
+		eval "exec ${g}<&-"
 
 		local j=$(< $f)
 		rm -f $f
@@ -192,9 +212,30 @@ function pull_learning_status() {
 function toggle_learning() {
 	if [[ 0 -lt ${MX} ]]
 	then
-		flock -x ${MONITOR_CHANNEL}
+		local g
+		exec {g}<${MONITOR_MUTEX}
+		flock -x ${g}
 		printf "{\"command\": \"toggle_learning\"}\0" >&${MONITOR_CHANNEL}
-		flock -u ${MONITOR_CHANNEL}
+		eval "exec ${g}<&-"
+	fi
+}
+
+function reset_anomalies() {
+	if [[ 0 -lt ${MX} ]]
+	then
+		if [[ 0 -lt $((Sv1 + Sv2)) ]]
+		then
+			Sv1=0
+			Sv2=0
+			push_load_sh
+			protect_cursor show_stressing_v1_status
+			protect_cursor show_stressing_v2_status
+		fi
+		local g
+		exec {g}<${MONITOR_MUTEX}
+		flock -x ${g}
+		printf "{\"command\": \"reset_anomalies\"}\0" >&${MONITOR_CHANNEL}
+		eval "exec ${g}<&-"
 	fi
 }
 
@@ -220,95 +261,137 @@ function stop_monitor() {
 	if [[ 0 -lt $MX ]]
 	then
 		rip "MY"
-		echo -ne "{"command": "quit"}\0" >&${MONITOR_CHANNEL}
+
+		local g
+		exec {g}<${MONITOR_MUTEX}
+		flock -x ${g}
+		printf "{\"command\": \"quit\"}\0" >&${MONITOR_CHANNEL}
+		eval "exec ${g}<&-"
+
 		wait $MX 2>/dev/null
 		MX=0
 	fi
 }
 
 ################################################################################
-## Healing block
+## Restart pod block
 
-function reset_anomaly() {
+function do_pod_restart() {
 	echo ${BOX}/kubectl delete pod $1 >> ${BOX}/kube.log
 	${BOX}/kubectl delete pod $1 2>> ${BOX}/kube.log 1>&2
+#	sleep 10
 	echo 1 >& $2
 }
 
-function deploy_healer() {
-	touch ${HEALER_MUTEX}
+function show_job_progress() {
+	local j=$1
+	shift
+	local z=(/ '\u2014' \\ \| / '\u2014' \\ \|)
+	local k=$((j % ${#z[@]}))
+	printf "\033[s\033[3;51H\033[K\033[3;51H$* %b\033[u" ${z[k]}
 }
 
-function reset_anomalies_() {
+function conduct_pod_restart() {
 	local g
 	exec {g}>${HEALER_MUTEX}
 	flock -x ${g}
 
-	local j=$(query_anomalies)
-	if [[ 0 -ne $? ]]; then return 0; fi
+	local f=$BOX/$(make_uuid)
+	mkfifo $f
+	exec {d}<> $f
+	do_pod_restart $1 $d &
+	local c=$!
 
-	local a=($(printf '%s' $j | jq '.[].name' | tr -d '"'))
-	if [[ 0 -eq ${#a[@]} ]]; then return 0; fi
-
-	local z=(/ '\u2014' \\ \| / '\u2014' \\ \|)
-	for p in ${a[@]}
+	local j=0
+	while ! read -t 0 -u $d
 	do
-		local f=$BOX/$(make_uuid)
-		mkfifo $f
-		exec {d}<> $f
-		reset_anomaly $p $d &
-		local c=$!
-
-		local j=0
-		while ! read -t 0 -u $d
-		do
-			local k=$((j % ${#z[@]}))
-			printf '\033[s\033[3;51H\033[K\033[3;51Hhealing %b\033[u' ${z[k]};
-			sleep 2
-			j=$((j + 1))
-		done
-		exec {d}<&-
-		wait $c 2>/dev/null
-		rm -f $f
+		protect_cursor show_job_progress $j "deleting pod $1"
+		usleep 150000
+		((++j))
 	done
-	printf "\033[s\033[3;50H\033[K\033[u";
+	exec {d}<&-
+	wait $c 2>/dev/null
+	rm -f $f
+
+	protect_cursor printf "\033[s\033[3;50H\033[K\033[u"
 }
 
-HC=0
-function start_healing() {
+XC=0
+function start_pod_restart() {
+	# make sure this will be the only restart job
 	local g
 	exec {g}>${HEALER_MUTEX}
-	local m=1
-	if flock -n -x ${g}
-	then
-		m=0
-	fi
+	flock -x ${g}
 	eval "exec ${g}>&-"
 
-	if [[ 0 -eq $m ]]
-	then
-		HC=0
-		if [[ 0 -lt $((Sv1 + Sv2)) ]]
-		then
-			Sv1=0
-			Sv2=0
-			push_load_sh
-			show_stressing_v1_status
-			show_stressing_v2_status
-		fi
-		reset_anomalies_ &
-		HC=$!
-	fi
+	conduct_pod_restart $1 &
+	XC=$!
 }
 
-function stop_healing() {
+function abort_pod_restart() {
 	local g
 	exec {g}>${HEALER_MUTEX}
 	if ! flock -n -x ${g}
 	then
-		rip "HC"
+		rip "XC"
 	fi
 	eval "exec ${g}>&-"
+}
+
+MR=()
+function list_restart_eligible_pods() {
+	query_anomalies | jq '.[].name' | tr -d '"'
+#	echo "aaa" "bbb" "ccc"
+}
+
+function show_restart_pod_menu() {
+	printf "\033[13;0H\033[KEnter the number of the action:\n\n"
+	for ((i=0; i< 15; ++i));
+	do
+		printf "\033[$((15 + i));0H\033[K"
+	done
+
+	local a=($(list_restart_eligible_pods))
+	MR=()
+	for i in ${a[@]}; do MR+=("delete pod $i"); done
+	MR+=(quit)
+	for ((i=0; i< ${#MR[@]}; ++i));
+	do
+		printf "\033[$((15 + i));0H\033[K%b\n" "$((i+1))) ${MR[$i]}"
+	done
+	printf "\033[K#? "
+}
+
+function show_restart_pod_dialog() {
+	local v
+	local q=1
+	declare -A m=()
+	while [[ 1 -eq $q ]]
+	do
+		protect_cursor show_restart_pod_menu
+		local I=(${!MR[@]})
+		for ((i=1; i<= ${#I[@]}; ++i))
+		do
+			m["$i"]=1
+		done
+
+		read v
+		stty -echo
+		case $v in
+			${#MR[@]})
+				q=0
+			;;
+			*)
+				if [[ -n "${m[$v]}" ]]
+				then
+					local n=(${MR[$((v - 1))]})
+					start_pod_restart ${n[2]}
+					q=0
+				fi
+			;;
+		esac
+		stty echo
+	done
 }
 
 ################################################################################
@@ -349,6 +432,9 @@ POD_CARRIER
 	echo -e "${GREEN}Deploy layout${NC}"
 	mkdir -p ref
 	mkdir -p data
+	touch ${HEALER_MUTEX}
+	touch ${CURSOR_MUTEX}
+	touch ${MONITOR_MUTEX}
 
 	if ! [[ -d skynet ]]
 	then
@@ -361,15 +447,85 @@ POD_CARRIER
 
 	echo -e "${GREEN}Query if learning${NC}"
 	pull_learning_status
-
-	echo -e "${GREEN}Deploy the healer${NC}"
-	deploy_healer
 }
 
 do_prepare
 
 ################################################################################
 ## Running stage
+
+MM=()
+function show_main_menu() {
+	MM=("${ML[$L]}" "${MC[$C]}" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}")
+	MM+=("reset anomalies" "delete unhealthy pod" quit)
+
+	printf "\033[13;0H\033[KEnter the number of the action:\n\n"
+	for ((i=0; i< ${#MM[@]}; ++i));
+	do
+		printf "\033[$((15 + i));0H\033[K%b\n" "$((i+1))) ${MM[$i]}"
+	done
+	printf "\033[K#? "
+}
+
+function show_main_menu_dialog() {
+	local a
+	local g
+	touch ${CURSOR_MUTEX}
+	while true
+	do
+		protect_cursor show_main_menu
+
+		read a
+		stty -echo
+		case $a in
+			1)
+				L=$((1 ^ L))
+				toggle_loading
+				protect_cursor show_loading_status
+			;;
+			2)
+				C=$((1 ^ C))
+				toggle_collecting
+				protect_cursor show_collecting_status
+			;;
+			3)
+				Sv1=$((1 ^ Sv1))
+				push_load_sh
+				protect_cursor show_stressing_v1_status
+			;;
+			4)
+				Sv2=$((1 ^ Sv2))
+				push_load_sh
+				protect_cursor show_stressing_v2_status
+			;;
+			5)
+				T=$((1 ^ T))
+				toggle_learning
+				protect_cursor show_training_status
+			;;
+			6)
+				reset_anomalies
+			;;
+			7)
+				stty echo
+				show_restart_pod_dialog
+			;;
+			${#MM[@]})
+				stty echo
+				protect_cursor printf "\033[s\033[2J\033[HStopping  \033[u"
+				abort_pod_restart
+				stop_monitor
+				stop_loading
+				stop_collecting
+				break 2
+			;;
+			*)
+				:
+			;;
+		esac
+		stty echo
+	done
+}
 
 pushd skynet > /dev/null
 echo -e "\033[2J\033[HRunning"
@@ -380,67 +536,7 @@ show_collecting_status
 show_stressing_v1_status
 show_stressing_v2_status
 show_training_status
-
-while true
-do
-	M=("${ML[$L]}" "${MC[$C]}" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}" "reset anomalies")
-	M+=(quit)
-
-	echo -e "\033[12;0H"
-	echo Enter the number of the action:
-	echo -e "\033[s"
-	for ((i=0; i<= ${#M[@]}; ++i)); do echo -e "\033[K"; done
-	echo -e "\033[u"
-
-	for ((i=0; i< ${#M[@]}; ++i))
-	do
-		echo "$((i+1))) ${M[$i]}"
-	done
-	printf "#? "
-
-	read a
-	case $a in
-		1)
-			L=$((1 ^ L))
-			toggle_loading
-			show_loading_status
-		;;
-		2)
-			C=$((1 ^ C))
-			toggle_collecting
-			show_collecting_status
-		;;
-		3)
-			Sv1=$((1 ^ Sv1))
-			push_load_sh
-			show_stressing_v1_status
-		;;
-		4)
-			Sv2=$((1 ^ Sv2))
-			push_load_sh
-			show_stressing_v2_status
-		;;
-		5)
-			T=$((1 ^ T))
-			toggle_learning
-			show_training_status
-		;;
-		6)
-			start_healing
-		;;
-		${#M[@]})
-			printf "\033[s\033[2J\033[HStopping  \033[u"
-			stop_healing
-			stop_monitor
-			stop_loading
-			stop_collecting
-			break 2
-		;;
-		*)
-			:
-		;;
-	esac
-done
+show_main_menu_dialog
 
 popd > /dev/null
 popd > /dev/null
