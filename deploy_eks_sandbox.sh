@@ -4,7 +4,7 @@ set -e
 
 NC='\e[0m'
 GREEN='\e[92m'
-CLUSTER_NAME=istio-demo-cluster-no1
+CLUSTER_NAME=istio-demo-cluster-no2
 CONTEXT_NAME=istio-demo
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 

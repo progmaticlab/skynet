@@ -10,7 +10,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 
 
 class AnomalyDetection(object):
-    def __init__(self, base_sample_size, msx=[1, 0.75, 1.25]):
+    def __init__(self, base_sample_size, msx=[1]: #, 0.75, 1.25]):
         self.kernel_n = base_sample_size
         self.msx = msx
 
@@ -57,7 +57,7 @@ class AnomalyDetection(object):
                 ranges[bucket].append((offset + i * features_n, offset + (i + 1) * features_n))
                 positions[bucket].append(i + 1)
 
-        return ranges, positions
+        return samples_n, ranges, positions
 
     def __get_bucket(self, v, M, std, bins):
         i = 0
