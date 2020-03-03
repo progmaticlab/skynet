@@ -573,7 +573,8 @@ class Monitor:
 		return True
 	
 	def prepare_file_series(self, path, pod_names):
-		files = sorted(os.listdir(path), key=lambda x_: x_.split('.')[1])
+		files = [f for f in os.listdir(path) if "+" in f]
+		files = sorted(files, key=lambda x_: x_.split('.')[1])
 		self.file_series = {}
 		for fname in files:
 			pod_name, timestamp = fname.split('.')
