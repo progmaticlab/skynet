@@ -22,9 +22,9 @@ from platform import node
 
 import anomaly_graph as ml
 
-EQUAL_ROWS_THRESHOLD = 0.05
-ANOMALY_MAX_THRESHOLD = 0.05
-ANOMALY_DEVIATION_THRESHOLD = 0.05
+EQUAL_ROWS_THRESHOLD = 0.1
+ANOMALY_MAX_THRESHOLD = 0.3
+ANOMALY_DEVIATION_THRESHOLD = 0.3
 
 learning = True
 
@@ -195,10 +195,10 @@ class Results:
 		return value / self.max
 	
 	def return_to_normal(self):
-		self.diff_equals_count = self.ref_equals_count
-		self.diff_max = self.ref_max
-		self.diff_dev = self.ref_dev
-		self.diff_norm_dev = self.ref_norm_dev
+		self.equals_count = self.ref_equals_count
+		self.max = self.ref_max
+		self.dev = self.ref_dev
+		self.norm_dev = self.ref_norm_dev
 		self.anomalies = 0
 		self.anomaly_unequal = 0
 		self.anomaly_maxed = 0
@@ -745,7 +745,8 @@ class Servant:
 		ml.processing = not learning
 		for pod in self.monitor.pods.values():
 			pod.set_reference()
-
+		if learning == False:
+			self.save(json_)
 		return True
 
 	def quit(self, json_):
