@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+kfs#!/usr/bin/python3
 
 import argparse
 import curses
@@ -746,7 +746,7 @@ class Servant:
 		for pod in self.monitor.pods.values():
 			pod.set_reference()
 		if learning == False:
-			self.save(json_)
+			self.monitor.save_pods()
 		return True
 
 	def quit(self, json_):
@@ -877,9 +877,11 @@ def main():
 	parser.add_argument('-m', '--multithreading', action='store_true', help='multithreading ml')
 	args = parser.parse_args()
 	if args.background:
+		general_logger.info("Running in background")
 		Background(args).run()
 	else:
 		# Use this wrapper to run in top-like mode
+		general_logger.info("Running in top mode")
 		wrapper(lambda x_, y_: Monitor(x_, y_).run(), args)
 
 main()
