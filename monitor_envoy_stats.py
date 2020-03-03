@@ -413,11 +413,15 @@ class Pod:
 					Pod.pods_info[timestamp][pod] = node
 		return Pod.pods_info[timestamp][pod_name]
 		
-	def read_envoy_data(self, fname):
+	def read_envoy_data(self, fname, file_series, pods_count):
 		with open(join(self.path, fname), 'r') as f:
 			fcontents = f.read()
 			contents = fcontents.splitlines()
 			pod_name, timestamp = fname.split('.')
+			# Check that time series is complete in regard to all pods
+			if len(file_series[timestamp]) < pods_count:
+				return False
+
 			if self.full_name != pod_name:
 				self.full_name = pod_name
 				self.return_to_normal()
@@ -454,6 +458,7 @@ class Pod:
 		self.files.add(fname)
 		self.series_count += 1
 		self.metrics_count = len(self.matrix.values())
+		return True
 	
 	def process_last_series(self):
 		items = sorted(self.results.items())
@@ -524,13 +529,13 @@ class Pod:
 								break
 
 
-	def process_pod(self, files):
+	def process_pod(self, files, file_series, pods_count):
 		for f in files:
 			if isfile(join(self.path, f)) and f.startswith(self.name) and not f in self.files:
-				general_logger.info("Processing pod file %s", f)
-				self.read_envoy_data(f)
-				self.process_last_series()
-				self.processed_files += 1
+				if self.read_envoy_data(f, file_series, pods_count):
+					general_logger.info("Processing pod file %s", f)
+					self.process_last_series()
+					self.processed_files += 1
 				# break #Uncomment this break to process each existing series per second
 
 class Monitor:
@@ -542,6 +547,7 @@ class Monitor:
 		self.args = args
 		self.pods = {}
 		self.refpods = {}
+		self.file_series = {}
 		self.sort_column = 'eq'
 		self.sort_metric = 'equals_count'
 		self.current_pod = ''
@@ -562,22 +568,35 @@ class Monitor:
 			if val_count == 0:
 				val_count = len(vals)
 			elif val_count != len(vals):
+				general_logger.info("Matrix is uneven: key %s has %s with %s for others", key, str(len(vals)), val_count)
 				return False
 		return True
+	
+	def prepare_file_series(self, path, pod_names):
+		files = sorted(os.listdir(path), key=lambda x_: x_.split('.')[1])
+		self.file_series = {}
+		for fname in files:
+			pod_name, timestamp = fname.split('.')
+			fseries = self.file_series.get(timestamp)
+			if not fseries:
+				self.file_series[timestamp] = []
+			self.file_series[timestamp].append(fname)
+		return files
 
 	def process_pods(self, path, pod_names, reset = False):
-		files = sorted(os.listdir(path), key=lambda x_: x_.split('.')[1])
+		self.pods_count = len(pod_names)
+		files = self.prepare_file_series(path, pod_names)
 		self.suspected_anomalies = []
 		for pod_name in pod_names:
 			pod = self.pods.get(pod_name)
-			pod.process_pod(files)
+			pod.process_pod(files, self.file_series, self.pods_count)
 			if reset:
 				pod.return_to_normal()
 			self.suspected_anomalies.extend(pod.suspected_anomalies)
 
 		# Check that equal files are processed and update ML in this case
 		if self.is_matrix_even():
-			general_logger.info("Updating matrix with %s suspected anomalies" + str(len(self.suspected_anomalies)))
+			general_logger.info("Updating matrix with %s suspected anomalies", str(len(self.suspected_anomalies)))
 			ml.update_matrix(self.global_matrix, self.suspected_anomalies)
 
 		self.pods[self.current_pod].sort_top(self.sort_metric, 20, self.empty_filter)
