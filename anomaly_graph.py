@@ -26,11 +26,13 @@ df_matrix = None
 progress = 'Waiting'
 columns_handled = []
 draw_all = False
+column_filter = []
 
-def update_matrix(matrix):
-    global df_matrix
+def update_matrix(matrix, columns = []):
+    global df_matrix, column_filter
     new_matrix = copy.deepcopy(matrix)
     df_matrix = new_matrix
+    column_filter = columns
 
 def draw_anomaly(column, ranges, ts):
     fname = column + '.' + str(datetime.datetime.now()) + '.png'
@@ -48,7 +50,7 @@ def draw_anomaly(column, ranges, ts):
 def process_anomalies(logging, column_filter=None):
     global anomalies_found, processed_column, anomaly_info, processing, df_matrix, progress, draw_all, columns_handled
     processed_column = "Starting"
-    if not df_matrix:
+    if not df_matrix or len(column_filter) == 0:
         return ''
     if not processing:
         anomalies_found = {}
@@ -58,7 +60,11 @@ def process_anomalies(logging, column_filter=None):
         columns_handled = []
         return ''
     df = pd.DataFrame.from_dict(df_matrix)
-    ad = AnomalyDetection(30)
+    row_len = len(next(iter(df_matrix.values())))
+    if row_len > 30:
+        row_len = 30
+    logging.info("Setting number of samples to " + str(row_len))
+    ad = AnomalyDetection(row_len)
     col_count = 0
     for column in df_matrix.keys():
         if column_filter and not column.startswith(column_filter):
@@ -100,4 +106,3 @@ def process_anomalies(logging, column_filter=None):
     with lock:
         columns_handled = []
     return ''
-    

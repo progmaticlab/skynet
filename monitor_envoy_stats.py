@@ -79,6 +79,16 @@ def process_ml(filter=''):
 			general_logger.error("ERROR in ML thread: " + str(e))
 		time.sleep(1)
 
+def confirm_anomalies():
+	global monitor
+	general_logger.info("Starting ML anomalies confirming")
+	while True:
+		try:
+			monitor.ml_anomalies = ml.process_anomalies(general_logger, ml.column_filter)
+		except Exception as e:
+			general_logger.error("ERROR in ML thread: " + str(e))
+		time.sleep(1)
+
 class Results:
 	cols = ['name', 'kind', 'eq', 'anom', 'min', 'avg', 'max', 'dev', 'navg', 'ndev', 'val', 'nval']
 	cols_props = {'name': 'name', 'kind': 'kind',
@@ -338,10 +348,16 @@ class Pod:
 		self.anomaly_maxed = 0
 		self.anomaly_deviated = 0
 		self.anomaly_ml = 0
+		self.suspected_anomalies = []
 
 	def return_to_normal(self):
 		for result in self.results.values():
 			result.return_to_normal()
+		self.anomaly_unequal = 0
+		self.anomaly_maxed = 0
+		self.anomaly_deviated = 0
+		self.anomaly_ml = 0
+		self.suspected_anomalies = []
 
 	def set_reference(self):
 		for result in self.results.values():
@@ -464,6 +480,7 @@ class Pod:
 		self.anomaly_maxed = 0
 		self.anomaly_deviated = 0
 		self.anomaly_ml = 0
+		self.suspected_anomalies = []
 		self.filtered_out = len(self.filtered_out_keys)
 		for result in self.results.values():
 			result.equals_count = len(result.equals)
@@ -473,6 +490,8 @@ class Pod:
 					self.anomaly_unequal += 1
 				if result.anomaly_maxed:
 					self.anomaly_maxed += 1
+					# Adding only maxed to suspected because other kinds are non-important for demo
+					self.suspected_anomalies.append(result.name)
 				if result.anomaly_deviated:
 					self.anomaly_deviated += 1
 				if result.anomaly_ml:
@@ -529,6 +548,7 @@ class Monitor:
 		self.empty_filter = True
 		self.ref_file = ''
 		self.ml_anomalies = ''
+		self.suspected_anomalies = []
 		self.global_matrix = {}
 		Pod.path = args.path
 		for pod_name in self.args.pods:
@@ -545,14 +565,20 @@ class Monitor:
 				return False
 		return True
 
-	def process_pods(self, path, pod_names):
+	def process_pods(self, path, pod_names, reset = False):
 		files = sorted(os.listdir(path), key=lambda x_: x_.split('.')[1])
+		self.suspected_anomalies = []
 		for pod_name in pod_names:
-			self.pods.get(pod_name).process_pod(files)
+			pod = self.pods.get(pod_name)
+			pod.process_pod(files)
+			if reset:
+				pod.return_to_normal()
+			self.suspected_anomalies.extend(pod.suspected_anomalies)
 
 		# Check that equal files are processed and update ML in this case
 		if self.is_matrix_even():
-			ml.update_matrix(self.global_matrix)
+			general_logger.info("Updating matrix with %s suspected anomalies" + str(len(self.suspected_anomalies)))
+			ml.update_matrix(self.global_matrix, self.suspected_anomalies)
 
 		self.pods[self.current_pod].sort_top(self.sort_metric, 20, self.empty_filter)
 		self.display_screen(self.pods[self.current_pod], 20)
@@ -653,16 +679,23 @@ class Monitor:
 			self.load_pods()
 		self.current_pod = self.args.pods[0]		
 		general_logger.info("Starting ML thread(s)")
-		if self.args.multithreading:
-			column_filters = self.args.pods
-		else:
-			column_filters = ['']
-		ml_threads = {}
-		for filter in column_filters:
-			ml_threads[filter] = threading.Thread(target=process_ml, args=(filter,))
-			ml_threads[filter].daemon = True
-			ml_threads[filter].start()
-		self.process_pods(self.args.path, self.args.pods)
+		# The following block is for background processing of selected metrics
+		#if self.args.multithreading:
+		#	column_filters = self.args.pods
+		#else:
+		#	column_filters = ['']
+		#ml_threads = {}
+		#for filter in column_filters:
+		#	ml_threads[filter] = threading.Thread(target=process_ml, args=(filter,))
+		#	ml_threads[filter].daemon = True
+		#	ml_threads[filter].start()
+
+		# Now we use instead the block for confirming suspected metrics
+		ml_thread = threading.Thread(target=confirm_anomalies)
+		ml_thread.daemon = True
+		ml_thread.start()
+				
+		self.process_pods(self.args.path, self.args.pods, True)			
 
 	def run(self):
 		global learning
@@ -791,8 +824,12 @@ class Background(Monitor):
 		self.sort_metric = 'anomalies'
 
 	def _loop(self, quit_):
-		while not quit_.wait(DISPLAY_REFRESH_FREQUENCY):
-			self.process_pods(self.args.path, self.args.pods)
+		try:
+			while not quit_.wait(DISPLAY_REFRESH_FREQUENCY):
+				self.process_pods(self.args.path, self.args.pods)
+		except Exception as e:
+			general_logger.error('Exception ' + str(e))
+			raise
 
 	def _despatch(self, json_):
 		if not json_:
