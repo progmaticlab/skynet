@@ -46,8 +46,7 @@ def draw_anomaly(column, ranges, ts):
 
         plt.savefig(fname)
 
-# column_filter is provided for multi-threading mode, though this mode for some reason is slower than single-thread and has some bugs for now
-def process_anomalies(logging, column_filter=None):
+def process_anomalies(logging, column_filter=[]):
     global anomalies_found, processed_column, anomaly_info, processing, df_matrix, progress, draw_all, columns_handled
     processed_column = "Starting"
     if not df_matrix or len(column_filter) == 0:
@@ -63,11 +62,12 @@ def process_anomalies(logging, column_filter=None):
     row_len = len(next(iter(df_matrix.values())))
     if row_len > 30:
         row_len = 30
-    logging.info("Setting number of samples to " + str(row_len))
+    logging.info("ML samples: %s, columns: ", str(row_len), "".join(column_filter))
     ad = AnomalyDetection(row_len)
     col_count = 0
     for column in df_matrix.keys():
-        if column_filter and not column.startswith(column_filter):
+        if not column in column_filter:
+            logging.info("Checking column %s ", column)
             continue
         try:
             col_count += 1
@@ -76,6 +76,7 @@ def process_anomalies(logging, column_filter=None):
             M = df[column].mean()
             ts = df[column].fillna(M).values
             samples, ranges, positions = ad.find_anomalies(ts)
+            logging.info("Finished processing column %s", column)
             anomaly_info = "Anomaly in " + column + " ranges: " + str(ranges) + " positions: " + str(positions)
             if (len(positions[1]) > 0 and positions[1][-1] > samples * 0.9 or
                len(positions[2]) > 0 and positions[2][-1] > samples * 0.9):

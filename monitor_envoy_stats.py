@@ -618,6 +618,7 @@ class Monitor:
 			with open(self.ref_file, 'rb') as instream:
 				self.pods = pickle.load(instream)
 			learning = False
+			ml.processing = True
 
 	def display_top_table(self, pod, num_rows):
 		top_table = []
