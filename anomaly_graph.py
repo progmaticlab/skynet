@@ -76,7 +76,7 @@ def process_anomalies(logging, column_filter=[]):
     row_len = len(next(iter(df_matrix.values())))
     if row_len > 30:
         row_len = 30
-    logging.info("ML samples: %s, columns: ", str(row_len), "".join(column_filter))
+    logging.info("ML samples: %s, columns: %s", str(row_len), "".join(column_filter))
     ad = AnomalyDetection(row_len)
     col_count = 0
     for column in df_matrix.keys():
