@@ -102,7 +102,8 @@ def process_anomalies(logging, column_filter=[]):
                         'service': get_service(column),
                         'metric': get_metric(column),
                         'ranges': ranges,
-                        'positions': positions
+                        'positions': positions,
+                        'ts': ts
                     }
                     if not draw_all:
                         draw_anomaly(column, ranges, ts)
