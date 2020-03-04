@@ -28,6 +28,10 @@ function make_uuid() {
 	python -c "import uuid; print(uuid.uuid1())"
 }
 
+function make_feedback() {
+	printf $BOX/fifo/$(make_uuid)
+}
+
 function protect_cursor() {
 	local g
 	exec {g}> ${CURSOR_MUTEX}
@@ -147,7 +151,7 @@ MY=0
 function query_anomalies() {
 	if [[ 0 -eq ${MX} ]]; then return -1; fi
 
-	local f=$BOX/$(make_uuid)
+	local f=$(make_feedback)
 	mkfifo $f
 
 	local g
@@ -190,7 +194,7 @@ function pull_anomalies() {
 function pull_learning_status() {
 	if [[ 0 -lt ${MX} ]]
 	then
-		local f=$BOX/$(make_uuid)
+		local f=$(make_feedback)
 		mkfifo $f
 
 		local g
@@ -296,7 +300,7 @@ function conduct_pod_restart() {
 	exec {g}>${HEALER_MUTEX}
 	flock -x ${g}
 
-	local f=$BOX/$(make_uuid)
+	local f=$(make_feedback)
 	mkfifo $f
 	exec {d}<> $f
 	do_pod_restart $1 $d &
@@ -430,8 +434,10 @@ POD_CARRIER
 	push_load_sh
 
 	echo -e "${GREEN}Deploy layout${NC}"
+	rm -rf fifo
 	mkdir -p ref
 	mkdir -p data
+	mkdir -p fifo
 	touch ${HEALER_MUTEX}
 	touch ${CURSOR_MUTEX}
 	touch ${MONITOR_MUTEX}
