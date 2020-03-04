@@ -14,6 +14,9 @@ MONITOR_MUTEX=$BOX/.monitor
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 MONITOR_TRANSPORT=$BOX/.transport
 
+SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-'./ml_data'}
+SLACK_APP_PORT_NUMBER=${SLACK_APP_PORT_NUMBER:-8080}
+
 function rip() {
 	eval "local x=\$$1"
 	if [[ 0 -lt $x ]]
@@ -184,11 +187,47 @@ function show_anomalies() {
 	done
 }
 
+function query_anomalies_data() {
+	if [[ 0 -eq ${MX} ]]; then return -1; fi
+	local cmd=$1
+	local dst=$2
+
+	local f=$(make_feedback)
+	mkfifo $f
+
+	local g
+	exec {g}<${MONITOR_MUTEX}
+	flock -x ${g}
+	printf "{\"command\": \"$cmd\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
+	eval "exec ${g}<&-"
+
+	cat < $f > $dst
+	rm -f $f
+}
+
+function make_feedback() {
+	local f1=$(make_feedback)
+	local f2=$(make_feedback)
+	query_anomalies_data query_anomalies_info $f1
+	query_anomalies_data query_anomalies_metrics $f2
+	scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
+		-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
+		$f1 ec2-user@$POD_CARRIER:~/ml_data/anomaly.json
+	scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
+		-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
+		$f2 ec2-user@$POD_CARRIER:~/ml_data/metrics_0_filter.csv
+	rm -f $f1 $f2
+	ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
+		-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
+		ec2-user@$POD_CARRIER curl http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run
+}
+
 function pull_anomalies() {
 	local j=$(query_anomalies)
 	if [[ 0 -eq $? ]]
 	then
 		protect_cursor show_anomalies $j
+		send_anomalies_info_to_slackapp
 	fi
 }
 
