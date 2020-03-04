@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 set -e
 
@@ -6,6 +6,12 @@ NC='\e[0m'
 GREEN='\e[92m'
 CLUSTER_NAME=${CLUSTER_NAME:-'istio-demo-cluster-no1'}
 CONTEXT_NAME=${CONTEXT_NAME:-'istio-demo'}
+
+SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-'./ml_data'}
+SLACK_SAMPLES_FOLDER=${SLACK_SAMPLES_FOLDER:-'./ml_samples'}
+SLACK_CHANNEL=${SLACK_CHANNEL:-'skynet'}
+SHADOWCAT_BOT_TOKEN=${SHADOWCAT_BOT_TOKEN:-''}
+
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 
 if [[ -z ${SSH_PUBLIC_KEY} ]]
@@ -169,10 +175,43 @@ INSTRUCTIONS
 	echo -e "${GREEN}ingress port:${NC} ${P}"
 	echo -e "${GREEN}ingress secure port:${NC} ${S}"
 	echo -e "${GREEN}GATEWAY_URL:${NC} ${A}:${P}"
+
+echo
+echo -e "${GREEN}Configure Slack Application server${NC}"
+if [[ -n "$SHADOWCAT_BOT_TOKEN" ]] ; then
+	for i in eksctl aws-iam-authenticator kubectl ; do
+		scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null \
+			-i ${SSH_PUBLIC_KEY/%[.]pub/} $b/$i ec2-user@$p:~/
+	done
+	cat <<INSTRUCTIONS | ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} ec2-user@$p sudo -- bash -
+	set -e
+	git clone https://github.com/progmaticlab/timeseries-vae-anomaly
+	pip3 install slackclient requests
+	if [[ -f ./timeseries-vae-anomaly.pid ]] ; then
+		kill \$(cat ./timeseries-vae-anomaly.pid)
+	fi
+	export SLACK_CALLBACK_HOST=$p
+	export DATA_FOLDER=$SLACK_DATA_FOLDER
+	export SAMPLES_FOLDER=$SLACK_SAMPLES_FOLDER
+	export SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN
+	export SLACK_CHANNEL=$SLACK_CHANNEL
+	export PATH=\${PATH]:\$(pwd)
+	mkdir -p $SLACK_DATA_FOLDER $SLACK_SAMPLES_FOLDER
+	nohup python3 ./timeseries-vae-anomaly/src/server.py > ./timeseries-vae-anomaly.log 2>&1 &
+	echo \$! > ./timeseries-vae-anomaly.pid
+INSTRUCTIONS
+
+else
+	echo -e "${GREEN}Skipped - slack API Token is not provided${NC}"
+fi
+
 ) || (
 	echo
 	echo -e "${GREEN}Remove the EKS cluster${NC}"
 	$b/eksctl delete cluster -n ${CLUSTER_NAME} -w
+	popd 
+	popd
+	exit -1
 )
 
 popd
