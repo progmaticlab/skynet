@@ -47,6 +47,19 @@ def draw_anomaly(column, ranges, ts):
 
         plt.savefig(fname)
 
+
+def get_metric(s):
+    return s.split(':')[1]
+
+
+def get_service(s):
+    return s.split('-')[0]
+
+
+def get_pod(s):
+    return '-'.join(s.split('-')[:2])
+
+
 def process_anomalies(logging, column_filter=[]):
     global anomalies_found, processed_column, anomaly_info, processing, df_matrix, progress, draw_all, columns_handled
     processed_column = "Starting"
@@ -82,8 +95,15 @@ def process_anomalies(logging, column_filter=[]):
             if (len(positions[1]) > 0 and positions[1][-1] > samples * 0.9 or
                len(positions[2]) > 0 and positions[2][-1] > samples * 0.9):
                 # TODO: find another criteria for checking for already found anomalies, like timestamp
-                if anomalies_found.get(column) != anomaly_info:
-                    anomalies_found[column] = anomaly_info
+                if anomalies_found.get(column, {}).get('info') != anomaly_info:
+                    anomalies_found[column] = {
+                        'info': anomaly_info,
+                        'pod': get_pod(column),
+                        'service': get_service(column),
+                        'metric': get_metric(column),
+                        'ranges': ranges,
+                        'positions': positions
+                    }
                     if not draw_all:
                         draw_anomaly(column, ranges, ts)
                     logging.info(anomaly_info)
