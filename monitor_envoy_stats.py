@@ -38,12 +38,19 @@ gauges = ['_buffered', '_active', 'uptime', 'concurrency', '_allocated', '_size'
 exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer', 'rq_timeout']
 include_keys = ['rq_time']
 
+class StderrWriter(object):
+	def __init__(self, logger_):
+		self.m_logger = logger_
+
+	def write(self, message_):
+		for line in message_.rstrip().splitlines():
+			 self.m_logger.error(line.rstrip())
+
 class GeneralLogLevelFilter(object):
 	def filter(self, record_):
 		return record_.levelno < logging.ERROR
 
-logging.basicConfig(level = logging.NOTSET)
-general_logger = logging.getLogger('general_logger')
+general_logger = logging.getLogger()
 general_formater = logging.Formatter('%(asctime)s.%(msecs)03d %(levelname)s %(thread)d: %(message)s', datefmt='%m-%d %H:%M:%S')
 error_handler = logging.FileHandler('monitor_envoy_error.log')
 error_handler.setLevel(logging.ERROR)
@@ -56,6 +63,12 @@ general_logger.setLevel(logging.NOTSET)
 general_logger.addHandler(error_handler)
 general_logger.addHandler(general_handler)
 
+tensorflow_logger = logging.getLogger("tensorflow")
+tensorflow_logger.handlers.clear()
+tensorflow_logger.addHandler(error_handler)
+tensorflow_logger.addHandler(general_handler)
+
+sys.stderr = StderrWriter(general_logger)
 monitor = None
 
 def exclude_row(key, value):
