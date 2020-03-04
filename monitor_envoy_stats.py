@@ -872,9 +872,9 @@ class Servant:
 		R = []
 		keys = af.keys()
 		if len(keys) > 0:
-			R += "," + ",".join(keys)
+			R.append("," + ",".join(keys))
 			for i in keys:
-				R += "," + ",".join(af[i]['ts'])
+				R.append("," + ",".join(af[i]['ts']))
 		return self._set_value(json_, R)
 
 
