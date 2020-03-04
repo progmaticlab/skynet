@@ -17,6 +17,9 @@ class AnomalyDetection(object):
     def find_anomalies(self, series, bins=[2, 3, 4], verbose=0):
         X = self.__Z_scale(series)
 
+        if np.count_nonzero(X) == 0:
+            return {}, {}, {}
+
         min_norm = 10 ** 6
         min_idx = 0
         X_pred_final = None

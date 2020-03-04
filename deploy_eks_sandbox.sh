@@ -37,7 +37,7 @@ fi
 echo
 echo -e "${GREEN}Download kube tools for AWS${NC}"
 b=$(pwd)/.sandbox/
-# Think of cleanup ?
+# TODO: Think of cleanup ?
 # rm -rf $b
 mkdir -p $b
 PATH=$PATH:$b
@@ -61,10 +61,8 @@ $b/kubectl config use-context ${CONTEXT_NAME}
 pushd $b
 echo
 
-if ! ls istio-* > /dev/null 2>&1 ; then
-	echo -e "${GREEN}Download istio${NC}"
-	curl -L https://istio.io/downloadIstio | sh -
-fi
+echo -e "${GREEN}Download istio${NC}"
+curl -L https://istio.io/downloadIstio | sh -
 
 pushd istio-*
 
@@ -186,7 +184,7 @@ if [[ -n "$SHADOWCAT_BOT_TOKEN" ]] ; then
 	cat <<INSTRUCTIONS | ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} ec2-user@$p sudo -- bash -
 	set -e
 	git clone https://github.com/progmaticlab/timeseries-vae-anomaly
-	pip3 install slackclient requests
+	pip3 install slackclient requests pandas matplotlib
 	if [[ -f ./timeseries-vae-anomaly.pid ]] ; then
 		kill \$(cat ./timeseries-vae-anomaly.pid)
 	fi
@@ -195,11 +193,12 @@ if [[ -n "$SHADOWCAT_BOT_TOKEN" ]] ; then
 	export SAMPLES_FOLDER=$SLACK_SAMPLES_FOLDER
 	export SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN
 	export SLACK_CHANNEL=$SLACK_CHANNEL
-	export PATH=\${PATH]:\$(pwd)
+	export PATH=\${PATH}:\$(pwd)
 	mkdir -p $SLACK_DATA_FOLDER $SLACK_SAMPLES_FOLDER
 	nohup python3 ./timeseries-vae-anomaly/src/server.py > ./timeseries-vae-anomaly.log 2>&1 &
 	echo \$! > ./timeseries-vae-anomaly.pid
 INSTRUCTIONS
+	true # TODO: ignore slack app installation for now
 
 else
 	echo -e "${GREEN}Skipped - slack API Token is not provided${NC}"
