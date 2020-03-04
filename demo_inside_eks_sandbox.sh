@@ -169,7 +169,8 @@ function query_anomalies() {
 function show_anomalies() {
 	local j=$1
 	local a=($(printf '%s' $j | jq '.[].name' | tr -d '"'))
-	local b=($(printf '%s' $j | jq '.[].count' | tr -d '"'))
+	local b=($(printf '%s' $j | jq '.[].ordinary'))
+	local c=($(printf '%s' $j | jq '.[].ml_confirmed'))
 
 	for((i=0;i<8;++i))
 	do
@@ -179,7 +180,7 @@ function show_anomalies() {
 	for i in ${!a[*]}
 	do
 		local k=$((i + 4))
-		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ${b[$i]}\033[u"
+		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ordinary(${BOLD}${b[$i]}${NC}), ml(${BOLD}${c[$i]}${NC})\033[u"
 	done
 }
 
@@ -358,7 +359,7 @@ function show_restart_pod_menu() {
 	local a=($(list_restart_eligible_pods))
 	MR=()
 	for i in ${a[@]}; do MR+=("delete pod $i"); done
-	MR+=(quit)
+	MR+=(back)
 	for ((i=0; i< ${#MR[@]}; ++i));
 	do
 		printf "\033[$((15 + i));0H\033[K%b\n" "$((i+1))) ${MR[$i]}"

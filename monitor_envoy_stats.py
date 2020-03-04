@@ -853,7 +853,7 @@ class Servant:
 	def list_anomalies(self, json_):
 		R = []
 		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
-			R.append({"name": p.full_name, "count": p.anomaly_maxed})
+			R.append({"name": p.full_name, "ordinary": p.anomaly_maxed, "ml_confirmed": p.anomaly_ml})
 
 		return self._set_value(json_, R)
 
