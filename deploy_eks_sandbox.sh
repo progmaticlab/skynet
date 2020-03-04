@@ -183,21 +183,24 @@ if [[ -n "$SHADOWCAT_BOT_TOKEN" ]] ; then
 			-i ${SSH_PUBLIC_KEY/%[.]pub/} $b/$i ec2-user@$p:~/
 	done
 	cat <<INSTRUCTIONS | ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} ec2-user@$p sudo -- bash -
-	set -e
-	git clone https://github.com/progmaticlab/timeseries-vae-anomaly
-	pip3 install slackclient requests pandas matplotlib
-	if [[ -f ./timeseries-vae-anomaly.pid ]] ; then
-		kill \$(cat ./timeseries-vae-anomaly.pid)
-	fi
-	export SLACK_CALLBACK_HOST=$p
-	export DATA_FOLDER=$SLACK_DATA_FOLDER
-	export SAMPLES_FOLDER=$SLACK_SAMPLES_FOLDER
-	export SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN
-	export SLACK_CHANNEL=$SLACK_CHANNEL
-	export PATH=\${PATH}:\$(pwd)
-	mkdir -p $SLACK_DATA_FOLDER $SLACK_SAMPLES_FOLDER
-	nohup python3 ./timeseries-vae-anomaly/src/server.py > ./timeseries-vae-anomaly.log 2>&1 &
-	echo \$! > ./timeseries-vae-anomaly.pid
+set -e
+git clone https://github.com/progmaticlab/timeseries-vae-anomaly
+pip3 install slackclient requests pandas matplotlib
+if [[ -f ./timeseries-vae-anomaly.pid ]] ; then
+	kill \$(cat ./timeseries-vae-anomaly.pid)
+fi
+echo export SLACK_CALLBACK_HOST=$p > ./slack_app_env
+echo export DATA_FOLDER=$SLACK_DATA_FOLDER >> ./slack_app_env
+echo export SAMPLES_FOLDER=$SLACK_SAMPLES_FOLDER >> ./slack_app_env
+echo export SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN >> ./slack_app_env
+echo export SLACK_CHANNEL=$SLACK_CHANNEL >> ./slack_app_env
+echo export PATH=\${PATH}:\$(pwd) >> ./slack_app_env
+source ./slack_app_env
+mkdir -p \$DATA_FOLDER \$SAMPLES_FOLDER
+nohup python3 ./timeseries-vae-anomaly/src/server.py > ./timeseries-vae-anomaly.log 2>&1 &
+echo \$! > ./timeseries-vae-anomaly.pid
+echo SlackBot App pid
+cat ./timeseries-vae-anomaly.pid
 INSTRUCTIONS
 	true # TODO: ignore slack app installation for now
 

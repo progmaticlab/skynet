@@ -28,6 +28,7 @@ columns_handled = []
 draw_all = False
 column_filter = []
 
+
 def update_matrix(matrix, columns = []):
     global df_matrix, column_filter
     new_matrix = copy.deepcopy(matrix)
