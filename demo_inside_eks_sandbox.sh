@@ -43,6 +43,23 @@ function protect_cursor() {
 	eval "exec ${g}>&-"
 }
 
+function json2csv() {
+	local src=$1
+	local dst=$2
+	python -c "
+import json, csv, sys
+with open('$src', 'r') as fs:
+	data = json.load(fs)
+	if (len(data) == 0):
+		sys.exit(-1)
+	with open('$dst', 'w') as fd:
+		d = csv.writer(fd)
+		for line in data:
+			d.writerow(keys)
+"
+}
+
+
 B=(no yes)
 
 ################################################################################
@@ -210,16 +227,18 @@ function send_anomalies_info_to_slackapp() {
 	local f2=$(make_feedback)
 	query_anomalies_data query_anomalies_info $f1
 	query_anomalies_data query_anomalies_metrics $f2
-	scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
-		-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
-		$f1 ec2-user@$POD_CARRIER:~/ml_data/anomaly.json
-	scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
-		-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
-		$f2 ec2-user@$POD_CARRIER:~/ml_data/metrics_0_filter.csv
-	rm -f $f1 $f2
-	ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
-		-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
-		ec2-user@$POD_CARRIER curl http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >/dev/null 2>&1
+	if json2csv $f2 ${f2}.csv ; then
+		scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
+			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
+			$f1 ec2-user@$POD_CARRIER:~/ml_data/anomaly.json >/dev/null 2>&1
+		scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
+			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
+			${f2}.csv ec2-user@$POD_CARRIER:~/ml_data/metrics_0_filter.csv >/dev/null 2>&1
+		ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
+			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
+			ec2-user@$POD_CARRIER curl http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >/dev/null 2>&1
+	fi
+	rm -f $f1 $f2 ${f2}.csv
 }
 
 function pull_anomalies() {
