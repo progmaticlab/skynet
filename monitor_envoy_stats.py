@@ -904,7 +904,7 @@ class Background(Monitor):
 		c = json_['command']
 		o = getattr(Servant(self), c, None)
 		if not callable(o):
-			general_logger.error('Bad command name')
+			general_logger.error('Bad command name "%s"' % c)
 			return False
 
 		return o(json_)
