@@ -205,7 +205,7 @@ function query_anomalies_data() {
 	rm -f $f
 }
 
-function make_feedback() {
+function send_anomalies_info_to_slackapp() {
 	local f1=$(make_feedback)
 	local f2=$(make_feedback)
 	query_anomalies_data query_anomalies_info $f1
