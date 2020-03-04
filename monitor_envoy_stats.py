@@ -553,6 +553,9 @@ class Monitor:
 		self.current_pod = ''
 		self.empty_filter = True
 		self.ref_file = ''
+		self.current_timestamp = ''
+		self.start_timestamp = ''
+		self.ref_timestamp = ''
 		self.ml_anomalies = ''
 		self.suspected_anomalies = []
 		self.global_matrix = {}
@@ -581,10 +584,16 @@ class Monitor:
 			fseries = self.file_series.get(timestamp)
 			if not fseries:
 				self.file_series[timestamp] = []
-			self.file_series[timestamp].append(fname)
+			# Skipping files after saved ref during startup
+			if ((self.ref_timestamp == '' or timestamp <= self.ref_timestamp) or
+				(self.start_timestamp != '' and timestamp > self.start_timestamp)):
+				self.file_series[timestamp].append(fname)
+				if timestamp > self.current_timestamp:
+					self.current_timestamp = timestamp
 		return files
 
 	def process_pods(self, path, pod_names, reset = False):
+		global learning
 		self.pods_count = len(pod_names)
 		files = self.prepare_file_series(path, pod_names)
 		self.suspected_anomalies = []
@@ -594,7 +603,9 @@ class Monitor:
 			if reset:
 				pod.return_to_normal()
 			self.suspected_anomalies.extend(pod.suspected_anomalies)
-
+		
+		if learning:
+			self.ref_timestamp = self.current_timestamp
 		# Check that equal files are processed and update ML in this case
 		if self.is_matrix_even():
 			general_logger.info("Updating matrix with %s suspected anomalies", str(len(self.suspected_anomalies)))
@@ -604,19 +615,20 @@ class Monitor:
 		self.display_screen(self.pods[self.current_pod], 20)
 
 	def save_pods(self):
-		general_logger.info("Saving ref file to %s", self.ref_file)
+		general_logger.info("Saving ref file to %s with timestamp %s", self.ref_file, self.ref_timestamp)
 		for pod in self.pods.values():
 			pod.matrix = {}
 			pod.stats = {}
 		with open(self.ref_file, 'wb') as output:
-			pickle.dump(self.pods, output, pickle.HIGHEST_PROTOCOL)
+			pickle.dump((self.ref_timestamp, self.pods), output, pickle.HIGHEST_PROTOCOL)
 
 	def load_pods(self):
 		global learning
 		general_logger.info("Loading pods from %s", self.ref_file)
 		if isfile(join(self.ref_file)):
 			with open(self.ref_file, 'rb') as instream:
-				self.pods = pickle.load(instream)
+				self.ref_timestamp, self.pods = pickle.load(instream)
+				general_logger.info("Loaded %s pods with timestamp %s", str(len(self.pods)), self.ref_timestamp)
 			learning = False
 			ml.processing = True
 
@@ -716,7 +728,8 @@ class Monitor:
 		ml_thread.daemon = True
 		ml_thread.start()
 				
-		self.process_pods(self.args.path, self.args.pods, True)			
+		self.process_pods(self.args.path, self.args.pods, True)
+		self.start_timestamp = self.current_timestamp
 
 	def run(self):
 		global learning
