@@ -112,6 +112,15 @@ Run test load (in separate terminal)
 
 ## Demo
 
+In order to use SlackBot it is needed to privide slack channel and auth token:
+``` bash
+export SLACK_CHANNEL=skynet
+export SHADOWCAT_BOT_TOKEN="xoxb-******"
+```
+Slack Bot App is to be created in advance, the app is to be added into the Slack channel and granted requried permisions.
+Deploy sandbox tool will deploy slack bot app onto the same EKS machine.
+In case of anomaly detection it will send data to that application and notify it via curl.
+ 
 It's supposed that pwd is this cloned repo from where you run scripts.
 Run the script to deploy test environment inside AWS, follow instructions
 
