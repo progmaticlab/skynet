@@ -67,6 +67,8 @@ tensorflow_logger = logging.getLogger("tensorflow")
 tensorflow_logger.handlers.clear()
 tensorflow_logger.addHandler(error_handler)
 tensorflow_logger.addHandler(general_handler)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
+tensorflow_logger.setLevel(logging.FATAL)
 
 sys.stderr = StderrWriter(general_logger)
 monitor = None
@@ -97,9 +99,11 @@ def confirm_anomalies():
 	general_logger.info("Starting ML anomalies confirming")
 	while True:
 		try:
+			general_logger.info("ML running confirming for %s", "".join(ml.column_filter))
 			monitor.ml_anomalies = ml.process_anomalies(general_logger, ml.column_filter)
 		except Exception as e:
-			general_logger.error("ERROR in ML thread: " + str(e))
+			logging.error("ERROR in ML thread")
+			logging.error(e, exc_info=True)
 		time.sleep(1)
 
 class Results:
@@ -410,7 +414,7 @@ class Pod:
 		return key
 
 	def generate_key(self, key):
-		return self.name + '|' + self.shorten(key)
+		return self.name + '|' + key #self.shorten(key)
 
 	@classmethod
 	def get_node(cls, timestamp, pod_name):
@@ -432,7 +436,8 @@ class Pod:
 			contents = fcontents.splitlines()
 			pod_name, timestamp = fname.split('.')
 			# Check that time series is complete in regard to all pods
-			if len(file_series[timestamp]) < pods_count:
+			fs_timestamp = file_series.get(timestamp)
+			if not fs_timestamp or len(fs_timestamp) < pods_count:
 				return False
 
 			if self.full_name != pod_name:
@@ -448,7 +453,8 @@ class Pod:
 					key = self.generate_key(row_split[0])
 					value = row_split[1]
 				except Exception as e:
-					general_logger.error("ERROR parsing value: %s %s %s", fname, row, e)
+					logging.error("ERROR parsing value: %s %s", fname, row)
+					logging.error(e, exc_info=True)
 					continue
 				if exclude_row(key, value):
 					self.filtered_out_keys.add(key)
@@ -542,9 +548,9 @@ class Pod:
 								break
 
 
-	def process_pod(self, files, file_series, pods_count):
+	def process_pod(self, files, file_series, pods_count, warming_up = False):
 		for f in files:
-			if isfile(join(self.path, f)) and f.startswith(self.name) and not f in self.files:
+			if isfile(join(self.path, f)) and f.startswith(self.name) and (f not in self.files or warming_up):
 				if self.read_envoy_data(f, file_series, pods_count):
 					general_logger.info("Processing pod file %s", f)
 					self.process_last_series()
@@ -594,6 +600,13 @@ class Monitor:
 		self.file_series = {}
 		for fname in files:
 			pod_name, timestamp = fname.split('.')
+			filter_out = True
+			for filter_name in pod_names:
+				if pod_name.startswith(filter_name):
+					filter_out = False
+					break
+			if filter_out:
+				continue
 			fseries = self.file_series.get(timestamp)
 			if not fseries:
 				self.file_series[timestamp] = []
@@ -601,19 +614,19 @@ class Monitor:
 			if ((self.ref_timestamp == '' or timestamp <= self.ref_timestamp) or
 				(self.start_timestamp != '' and timestamp > self.start_timestamp)):
 				self.file_series[timestamp].append(fname)
-				if timestamp > self.current_timestamp:
-					self.current_timestamp = timestamp
+			if timestamp > self.current_timestamp:
+				self.current_timestamp = timestamp
 		return files
 
-	def process_pods(self, path, pod_names, reset = False):
+	def process_pods(self, path, pod_names, warming_up = False):
 		global learning
 		self.pods_count = len(pod_names)
 		files = self.prepare_file_series(path, pod_names)
 		self.suspected_anomalies = []
 		for pod_name in pod_names:
 			pod = self.pods.get(pod_name)
-			pod.process_pod(files, self.file_series, self.pods_count)
-			if reset:
+			pod.process_pod(files, self.file_series, self.pods_count, warming_up)
+			if warming_up:
 				pod.return_to_normal()
 			self.suspected_anomalies.extend(pod.suspected_anomalies)
 		
@@ -634,6 +647,7 @@ class Monitor:
 			pod.stats = {}
 		with open(self.ref_file, 'wb') as output:
 			pickle.dump((self.ref_timestamp, self.pods), output, pickle.HIGHEST_PROTOCOL)
+		self.start_timestamp = self.ref_timestamp
 
 	def load_pods(self):
 		global learning
@@ -874,7 +888,7 @@ class Servant:
 		if len(keys) > 0:
 			R.append("," + ",".join(keys))
 			for i in keys:
-				R.append("," + ",".join(af[i]['ts']))
+				R.append("," + ",".join(map(str, af[i]['ts'])))
 		return self._set_value(json_, R)
 
 
@@ -889,7 +903,7 @@ class Background(Monitor):
 			while not quit_.wait(DISPLAY_REFRESH_FREQUENCY):
 				self.process_pods(self.args.path, self.args.pods)
 		except Exception as e:
-			general_logger.error('Exception ' + str(e))
+			logging.error(e, exc_info=True)
 			raise
 
 	def _despatch(self, json_):
