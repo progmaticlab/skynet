@@ -184,17 +184,29 @@ pushd $BOX > /dev/null
 
 MX=0
 MY=0
+function protect_monitor() {
+	if [[ 0 -lt ${MX} ]]
+	then
+		local g
+		exec {g}<${MONITOR_MUTEX}
+		flock -x ${g}
+		$* >&${MONITOR_CHANNEL}
+		eval "exec ${g}<&-"
+	fi
+}
+
+function query_anomalies_() {
+	local f=$1
+	printf "{\"command\": \"list_anomalies\", \"promise\": \"${f}\"}\0"
+}
+
 function query_anomalies() {
 	if [[ 0 -eq ${MX} ]]; then return -1; fi
 
 	local f=$(make_feedback)
 	mkfifo $f
 
-	local g
-	exec {g}<${MONITOR_MUTEX}
-	flock -x ${g}
-	printf "{\"command\": \"list_anomalies\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
-	eval "exec ${g}<&-"
+	protect_monitor query_anomalies_ $f
 
 	local j=$(< $f)
 	rm -f $f
@@ -220,6 +232,12 @@ function show_anomalies() {
 	done
 }
 
+function query_anomalies_data_() {
+	local c=$1
+	local f=$2
+	printf "{\"command\": \"${c}\", \"promise\": \"${f}\"}\0"
+}
+
 function query_anomalies_data() {
 	if [[ 0 -eq ${MX} ]]; then return -1; fi
 	local cmd=$1
@@ -228,11 +246,7 @@ function query_anomalies_data() {
 	local f=$(make_feedback)
 	mkfifo $f
 
-	local g
-	exec {g}<${MONITOR_MUTEX}
-	flock -x ${g}
-	printf "{\"command\": \"$cmd\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
-	eval "exec ${g}<&-"
+	protect_monitor query_anomalies_data_ $cmd $f
 
 	cat < $f > $dst
 	rm -f $f
@@ -265,17 +279,18 @@ function pull_anomalies() {
 	fi
 }
 
+function pull_learning_status_() {
+	local f=$1
+	printf "{\"command\": \"is_learning\", \"promise\": \"${f}\"}\0"
+}
+
 function pull_learning_status() {
 	if [[ 0 -lt ${MX} ]]
 	then
 		local f=$(make_feedback)
 		mkfifo $f
 
-		local g
-		exec {g}<${MONITOR_MUTEX}
-		flock -x ${g}
-		printf "{\"command\": \"is_learning\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
-		eval "exec ${g}<&-"
+		protect_monitor pull_learning_status_ $f
 
 		local j=$(< $f)
 		rm -f $f
@@ -287,17 +302,18 @@ function pull_learning_status() {
 	fi
 }
 
-function toggle_learning() {
-	if [[ 0 -lt ${MX} ]]
-	then
-		local g
-		exec {g}<${MONITOR_MUTEX}
-		flock -x ${g}
-		printf "{\"command\": \"toggle_learning\"}\0" >&${MONITOR_CHANNEL}
-		eval "exec ${g}<&-"
-	fi
+function toggle_learning_() {
+	printf "{\"command\": \"toggle_learning\"}\0"
 }
 
+function toggle_learning() {
+	protect_monitor toggle_learning_
+}
+
+function reset_anomalies_() {
+	printf "{\"command\": \"reset_anomalies\"}\0"
+ }
+ 
 function reset_anomalies() {
 	if [[ 0 -lt ${MX} ]]
 	then
@@ -309,12 +325,17 @@ function reset_anomalies() {
 			protect_cursor show_stressing_v1_status
 			protect_cursor show_stressing_v2_status
 		fi
-		local g
-		exec {g}<${MONITOR_MUTEX}
-		flock -x ${g}
-		printf "{\"command\": \"reset_anomalies\"}\0" >&${MONITOR_CHANNEL}
-		eval "exec ${g}<&-"
+		protect_monitor reset_anomalies_
 	fi
+}
+
+function reset_pod_service_() {
+	local p=$1
+	printf "{\"command\": \"reset_pod_service\", \"pod\": \"${p}\"}\0"
+}
+
+function reset_pod_service() {
+	protect_monitor reset_pod_service_ $1
 }
 
 function track_anomalies() {
@@ -335,16 +356,16 @@ function start_monitor() {
 	MY=$!
 }
 
+function stop_monitor_() {
+	printf "{\"command\": \"quit\"}\0"
+}
+
 function stop_monitor() {
 	if [[ 0 -lt $MX ]]
 	then
 		rip "MY"
 
-		local g
-		exec {g}<${MONITOR_MUTEX}
-		flock -x ${g}
-		printf "{\"command\": \"quit\"}\0" >&${MONITOR_CHANNEL}
-		eval "exec ${g}<&-"
+		protect_monitor stop_monitor_
 
 		wait $MX 2>/dev/null
 		MX=0
@@ -359,6 +380,8 @@ function do_pod_restart() {
 	${BOX}/kubectl delete pod $1 2>> ${BOX}/kube.log 1>&2
 #	sleep 10
 	echo 1 >& $2
+
+	reset_pod_service $1
 }
 
 function show_job_progress() {
