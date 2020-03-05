@@ -70,7 +70,7 @@ with open('$src', 'r') as fs:
 " >> $dbg_dir/json2csv_metrics.log 2>&1 || ret=1
 	if [[ $ret != 0 ]] ; then
 		cp $src $dbg_dir/src.json
-		cp $dst $dbg_dir/dst.csv
+		[ -f $dst ] && cp $dst $dbg_dir/dst.csv
 	fi
 	return $ret
 }
