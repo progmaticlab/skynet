@@ -55,7 +55,7 @@ with open('$src', 'r') as fs:
 	with open('$dst', 'w') as fd:
 		d = csv.writer(fd)
 		for line in data:
-			d.writerow(keys)
+			d.writerow(line)
 "
 }
 
