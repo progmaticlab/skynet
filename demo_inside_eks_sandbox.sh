@@ -46,6 +46,9 @@ function protect_cursor() {
 function json2csv_metrics() {
 	local src=$1
 	local dst=$2
+	local dbg_dir=$BOX/json2csv_metrics
+	mkdir -p $dbg_dir
+	local res=0
 	python -c "
 import json, csv, sys
 with open('$src', 'r') as fs:
@@ -64,7 +67,12 @@ with open('$src', 'r') as fs:
 				row.append(data[k]['ts'][index])
 			d.writerow(row)
 			index += 1
-"
+" >> $dbg_dir/json2csv_metrics.log 2>&1 || ret=1
+	if [[ $ret != 0 ]] ; then
+		cp $src $dbg_dir/src.json
+		cp $dst $dbg_dir/dst.csv
+	fi
+	return $ret
 }
 
 
