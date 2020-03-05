@@ -489,7 +489,7 @@ function do_prepare() {
 	echo -e "\033[2J\033[HStarting"
 
 	echo
-	pip3 list  --format=legacy | (
+	pip3 list 2>/dev/null | (
 		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0)
 		while read x
 		do
