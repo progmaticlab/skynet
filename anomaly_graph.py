@@ -62,11 +62,12 @@ def get_pod(s):
 
 def process_anomalies(logging, column_filter=[]):
     global anomalies_found, processed_column, anomaly_info, processing, df_matrix, progress, draw_all, columns_handled
+    current_anomalies = {}
     processed_column = "Starting"
     if not df_matrix or len(column_filter) == 0:
         return ''
     if not processing:
-        anomalies_found = {}
+        current_anomalies = {}
         anomaly_info = ''
         processed_column = ''
         progress = 'Waiting'
@@ -97,8 +98,8 @@ def process_anomalies(logging, column_filter=[]):
                 len(positions[2]) > 0 and positions[2][-1] > samples * 0.9 or
                 len(positions[3]) > 0 and positions[3][-1] > samples * 0.9)):
                 # TODO: find another criteria for checking for already found anomalies, like timestamp
-                if anomalies_found.get(column, {}).get('info') != anomaly_info:
-                    anomalies_found[column] = {
+                if current_anomalies.get(column, {}).get('info') != anomaly_info:
+                    current_anomalies[column] = {
                         'info': anomaly_info,
                         'pod': get_pod(column),
                         'service': get_service(column),
@@ -111,7 +112,7 @@ def process_anomalies(logging, column_filter=[]):
                         draw_anomaly(column, ranges, ts)
                     logging.info(anomaly_info)
             else:
-                anomalies_found.pop(column, None)
+                current_anomalies.pop(column, None)
             if draw_all:
                 draw_anomaly(column, ranges, ts)
         except Exception as e:
@@ -131,4 +132,5 @@ def process_anomalies(logging, column_filter=[]):
 #        time.sleep(1)
     #with lock:
     columns_handled = []
+    anomalies_found = copy.deepcopy(current_anomalies)
     return ''
