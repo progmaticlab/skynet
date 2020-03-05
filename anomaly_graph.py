@@ -16,7 +16,7 @@ from anomaly import AnomalyDetection
 k1 = '#DC7633'
 k2 = '#E74C3C'
 
-lock = threading.Lock()
+#lock = threading.Lock()
 
 processing = False
 processed_column = "None"
@@ -49,15 +49,15 @@ def draw_anomaly(column, ranges, ts):
 
 
 def get_metric(s):
-    return s.split(':')[1]
+    return s.split('|', 1)[1]
 
 
 def get_service(s):
-    return s.split('-')[0]
+    return s.split('|', 1)[0]
 
 
 def get_pod(s):
-    return '-'.join(s.split('-')[:2])
+    return get_service(s)
 
 
 def process_anomalies(logging, column_filter=[]):
@@ -76,12 +76,11 @@ def process_anomalies(logging, column_filter=[]):
     row_len = len(next(iter(df_matrix.values())))
     if row_len > 30:
         row_len = 30
-    logging.info("ML samples: %s, columns: %s", str(row_len), "".join(column_filter))
+    logging.info("ML samples: %s, columns: %s", str(row_len), str(column_filter))
     ad = AnomalyDetection(row_len)
     col_count = 0
     for column in df_matrix.keys():
         if not column in column_filter:
-            logging.info("Checking column %s ", column)
             continue
         try:
             col_count += 1
@@ -92,8 +91,11 @@ def process_anomalies(logging, column_filter=[]):
             samples, ranges, positions = ad.find_anomalies(ts)
             logging.info("Finished processing column %s", column)
             anomaly_info = "Anomaly in " + column + " ranges: " + str(ranges) + " positions: " + str(positions)
-            if (len(positions[1]) > 0 and positions[1][-1] > samples * 0.9 or
-               len(positions[2]) > 0 and positions[2][-1] > samples * 0.9):
+            logging.info("ML processing column %s", anomaly_info)
+            if (0 < len(positions) and (
+                len(positions[1]) > 0 and positions[1][-1] > samples * 0.9 or
+                len(positions[2]) > 0 and positions[2][-1] > samples * 0.9 or
+                len(positions[3]) > 0 and positions[3][-1] > samples * 0.9)):
                 # TODO: find another criteria for checking for already found anomalies, like timestamp
                 if anomalies_found.get(column, {}).get('info') != anomaly_info:
                     anomalies_found[column] = {
@@ -103,7 +105,7 @@ def process_anomalies(logging, column_filter=[]):
                         'metric': get_metric(column),
                         'ranges': ranges,
                         'positions': positions,
-                        'ts': ts
+                        'ts': ts.tolist()
                     }
                     if not draw_all:
                         draw_anomaly(column, ranges, ts)
@@ -114,18 +116,19 @@ def process_anomalies(logging, column_filter=[]):
                 draw_anomaly(column, ranges, ts)
         except Exception as e:
             anomaly_info = "Shit happens with " + column + " " + str(e)
-            logging.error("ERROR in processing column " + column + str(e))
+            logging.error("ERROR in processing column %s", column)
+            logging.error(e, exc_info=True)
             ranges = []
             positions = []
         finally:
-            with lock:
-                columns_handled.append(column)
+#            with lock:
+            columns_handled.append(column)
             progress = str(len(columns_handled)) + '/' + str(len(df_matrix))  
             
     processed_column = "None"
     # Wait for other threads to finish
-    while len(columns_handled) != len(df_matrix):
-        time.sleep(1)
-    with lock:
-        columns_handled = []
+#    while len(columns_handled) != len(df_matrix):
+#        time.sleep(1)
+    #with lock:
+    columns_handled = []
     return ''

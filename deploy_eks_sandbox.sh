@@ -4,7 +4,7 @@ set -e
 
 NC='\e[0m'
 GREEN='\e[92m'
-CLUSTER_NAME=${CLUSTER_NAME:-'istio-demo-cluster-no1'}
+CLUSTER_NAME=${CLUSTER_NAME:-'istio-demo-cluster-no4'}
 CONTEXT_NAME=${CONTEXT_NAME:-'istio-demo'}
 
 SLACK_CHANNEL=${SLACK_CHANNEL:-'skynet'}
