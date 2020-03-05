@@ -43,7 +43,7 @@ function protect_cursor() {
 	eval "exec ${g}>&-"
 }
 
-function json2csv() {
+function json2csv_metrics() {
 	local src=$1
 	local dst=$2
 	python -c "
@@ -54,10 +54,16 @@ with open('$src', 'r') as fs:
 		sys.exit(-1)
 	with open('$dst', 'w') as fd:
 		d = csv.writer(fd)
-		keys = data.keys()
+		keys = list(data.keys())
 		d.writerow(keys)
-		for k in keys:
-			d.writerow(data[k]['ts'])
+		index = 0
+		max_index = len(data[keys[0]]['ts'])
+		while (index < max_index):
+			row = [index]
+			for k in keys:
+				row.append(data[k]['ts'][index])
+			d.writerow(row)
+			index += 1
 "
 }
 
@@ -228,19 +234,17 @@ function send_anomalies_info_to_slackapp() {
 	local f1=$(make_feedback)
 	local f2=$(make_feedback)
 	query_anomalies_data query_anomalies_info $f1
-	query_anomalies_data query_anomalies_metrics $f2
-	if json2csv $f2 ${f2}.csv ; then
+	if json2csv_metrics $f1 $f2 ; then
 		scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
 			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
 			$f1 ec2-user@$POD_CARRIER:~/ml_data/anomaly.json >/dev/null 2>&1
 		scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
 			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
-			${f2}.csv ec2-user@$POD_CARRIER:~/ml_data/metrics_0_filter.csv >/dev/null 2>&1
+			$f2 ec2-user@$POD_CARRIER:~/ml_data/metrics_0_filter.csv >/dev/null 2>&1
 		ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
 			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
 			ec2-user@$POD_CARRIER curl http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >/dev/null 2>&1
 	fi
-	rm -f $f1 $f2 ${f2}.csv
 }
 
 function pull_anomalies() {

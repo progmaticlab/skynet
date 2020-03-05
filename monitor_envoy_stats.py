@@ -889,16 +889,6 @@ class Servant:
 		af = deepcopy(ml.anomalies_found)
 		return self._set_value(json_, af)
 
-	def query_anomalies_metrics(self, json_):
-		af = deepcopy(ml.anomalies_found)
-		R = []
-		keys = af.keys()
-		if len(keys) > 0:
-			R.append("," + ",".join(keys))
-			for i in keys:
-				R.append("," + ",".join(map(str, af[i]['ts'])))
-		return self._set_value(json_, R)
-
 
 class Background(Monitor):
 	def __init__(self, args_):
