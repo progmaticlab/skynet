@@ -465,8 +465,33 @@ function do_prepare() {
 
 	echo
 	echo -e "${GREEN}Install python packages${NC}"
-	pip3 install tabulate pandas matplotlib tensorflow==1.14.0 --upgrade --user
-
+	pip3 list  --format=legacy | (
+		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0)
+		while read x
+		do
+			y=($x)
+			z=${y[0]}
+			if [[ ${m[$z]+_} ]]
+			then
+				unset m[$z]
+			fi
+		done
+		x=
+		for i in ${!m[@]}
+		do
+			x="$x $i"
+			y=${m[$i]}
+			if [[ "$y" ]]
+			then
+				x="$x==$y"
+			fi
+		done
+		if [[ "$x" ]]
+		then
+			echo "pip3 install$x --upgrade --user"
+			pip3 install$x --upgrade --user
+		fi
+	)
 	echo
 	echo -e "${GREEN}Read the gateway URL${NC}"
 	HOST_PORT=$(bash <<URL
