@@ -462,11 +462,33 @@ function show_restart_pod_dialog() {
 ################################################################################
 ## Starting stage
 
+HC=
+function collapse() {
+	rip "HC"
+	abort_pod_restart
+	stop_monitor
+	stop_loading
+	stop_collecting
+}
+
+function care_parent() {
+	local p=$1
+	while true
+	do
+		sleep 2
+		if ! kill -s 0 $p 2>/dev/null
+		then
+			collapse
+			kill -s 9 -$p 2>/dev/null
+			break
+		fi
+	done
+}
+
 function do_prepare() {
 	echo -e "\033[2J\033[HStarting"
 
 	echo
-	echo -e "${GREEN}Install python packages${NC}"
 	pip3 list  --format=legacy | (
 		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0)
 		while read x
@@ -490,11 +512,12 @@ function do_prepare() {
 		done
 		if [[ "$x" ]]
 		then
+			echo -e "${GREEN}Install python packages${NC}"
 			echo "pip3 install$x --upgrade --user"
 			pip3 install$x --upgrade --user
+			echo
 		fi
 	)
-	echo
 	echo -e "${GREEN}Read the gateway URL${NC}"
 	HOST_PORT=$(bash <<URL
 	A=\$(./kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
@@ -539,6 +562,10 @@ POD_CARRIER
 
 	echo -e "${GREEN}Query if learning${NC}"
 	pull_learning_status
+
+	local t=$$
+	care_parent $t &
+	HC=$!
 }
 
 do_prepare
@@ -605,10 +632,7 @@ function show_main_menu_dialog() {
 			${#MM[@]})
 				stty echo
 				protect_cursor printf "\033[s\033[2J\033[HStopping  \033[u"
-				abort_pod_restart
-				stop_monitor
-				stop_loading
-				stop_collecting
+				collapse
 				break 2
 			;;
 			*)
