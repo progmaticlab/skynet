@@ -46,6 +46,7 @@ def draw_anomaly(column, ranges, ts):
                 ax.axvspan(start, end-1, color=c, alpha = 0.16 * k)
 
         plt.savefig(fname)
+    plt.close(fig)
 
 
 def get_metric(s):
