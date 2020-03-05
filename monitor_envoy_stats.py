@@ -48,7 +48,14 @@ class StderrWriter(object):
 
 class GeneralLogLevelFilter(object):
 	def filter(self, record_):
+		if "tensorflow" == record_.name:
+			return False
+
 		return record_.levelno < logging.ERROR
+
+class TensorflowFilter(object):
+	def filter(self, record_):
+		return "tensorflow" == record_.name
 
 general_logger = logging.getLogger()
 general_formater = logging.Formatter('%(asctime)s.%(msecs)03d %(levelname)s %(thread)d: %(message)s', datefmt='%m-%d %H:%M:%S')
@@ -59,16 +66,17 @@ general_handler = logging.FileHandler('monitor_envoy.log')
 general_handler.setLevel(logging.NOTSET)
 general_handler.addFilter(GeneralLogLevelFilter())
 general_handler.setFormatter(general_formater)
+tensorflow_handler = logging.FileHandler('tensorflow.log')
+tensorflow_handler.setLevel(logging.NOTSET)
+tensorflow_handler.addFilter(TensorflowFilter())
+tensorflow_handler.setFormatter(general_formater)
 general_logger.setLevel(logging.NOTSET)
+general_logger.handlers.clear()
 general_logger.addHandler(error_handler)
 general_logger.addHandler(general_handler)
+general_logger.addHandler(tensorflow_handler)
 
-tensorflow_logger = logging.getLogger("tensorflow")
-tensorflow_logger.handlers.clear()
-tensorflow_logger.addHandler(error_handler)
-tensorflow_logger.addHandler(general_handler)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
-tensorflow_logger.setLevel(logging.FATAL)
 
 sys.stderr = StderrWriter(general_logger)
 monitor = None
