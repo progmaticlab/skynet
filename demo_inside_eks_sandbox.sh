@@ -48,7 +48,7 @@ function json2csv_metrics() {
 	local dst=$2
 	local dbg_dir=$BOX/json2csv_metrics
 	mkdir -p $dbg_dir
-	local res=0
+	local ret=0
 	python -c "
 import json, csv, sys
 with open('$src', 'r') as fs:
