@@ -253,6 +253,7 @@ function send_anomalies_info_to_slackapp() {
 			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
 			ec2-user@$POD_CARRIER curl http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >/dev/null 2>&1
 	fi
+	rm -f $f1 $f2
 }
 
 function pull_anomalies() {
