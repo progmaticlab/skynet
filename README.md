@@ -119,7 +119,10 @@ export SHADOWCAT_BOT_TOKEN="xoxb-******"
 ```
 Slack Bot App is to be created in advance, the app is to be added into the Slack channel and granted requried permisions.
 Deploy sandbox tool will deploy slack bot app onto the same EKS machine.
-In case of anomaly detection it will send data to that application and notify it via curl.
+Permissions required for the app: calls:read, calls:write, chat:write, files:write.
+For backward notifications by buttons it is needed to manually set Request URL
+for the app on Slack site like: http://54.214.233.135:8080/slack/interactive/
+It is because there is no way to do it dynamically.
  
 It's supposed that pwd is this cloned repo from where you run scripts.
 Run the script to deploy test environment inside AWS, follow instructions

@@ -54,8 +54,10 @@ with open('$src', 'r') as fs:
 		sys.exit(-1)
 	with open('$dst', 'w') as fd:
 		d = csv.writer(fd)
-		for line in data:
-			d.writerow(line)
+		keys = data.keys()
+		d.writerow(keys)
+		for k in keys:
+			d.writerow(data[k]['ts'])
 "
 }
 
