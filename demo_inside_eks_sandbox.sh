@@ -24,7 +24,7 @@ SLACK_APP=${BOX}/timeseries-vae-anomaly
 SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-"${BOX}/.slack_app_data"}
 SLACK_APP_PORT_NUMBER=${SLACK_APP_PORT_NUMBER:-8080}
 SLACK_DATA_ANOMALY="${SLACK_DATA_FOLDER}/anomaly.json"
-SLACK_DATA_METRICS="${SLACK_DATA_FOLDER}/metrics_0_filter.csv.json"
+SLACK_DATA_METRICS="${SLACK_DATA_FOLDER}/metrics_0_filter.csv"
 
 
 function rip() {
@@ -84,6 +84,7 @@ print('done')
 sys.exit(0)
 " >> $dbg_dir/json2csv_metrics.log 2>&1 || ret=1
 	if [[ $ret != 0 ]] ; then
+		# save bad file if error for next dbg
 		cp $src $dbg_dir/src.json
 		[ -f $dst ] && cp $dst $dbg_dir/dst.csv
 	fi
@@ -193,6 +194,10 @@ function show_training_status() {
 	printf "\033[s\033[8;2H${CYAN}Learning${NC}: ${B[$T]}  \033[u"
 }
 
+if [[ ! -d $BOX ]] ; then
+	echo "ERROR: there is no $BOX folder. Please run deploy first."
+	exit -1
+fi
 pushd $BOX > /dev/null
 
 ################################################################################
@@ -272,7 +277,7 @@ function query_anomalies_data() {
 function send_anomalies_info_to_slackapp() {
 	query_anomalies_data query_anomalies_info $SLACK_DATA_ANOMALY
 	if json2csv_metrics $SLACK_DATA_ANOMALY $SLACK_DATA_METRICS ; then
-		curl http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >> ${BOX}/slack_app_curl.log 2>&1
+		curl -v http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >> ${BOX}/slack_app_curl.log 2>&1
 	fi
 }
 
@@ -382,13 +387,14 @@ function stop_monitor() {
 ## Slack app block
 MS=0
 function start_slack_app() {
+	mkdir -p $SLACK_DATA_FOLDER
 	SLACK_CHANNEL=$SLACK_CHANNEL \
 	SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN \
 	HOST_NAME='localhost' \
 	PORT_NUMBER=$SLACK_APP_PORT_NUMBER \
 	DATA_FOLDER=$SLACK_DATA_FOLDER \
 	SAMPLES_FOLDER=$SLACK_DATA_FOLDER \
-		python3 ${SLACK_APP}/src/server.py ${BOX}/slack_app.log 2>&1 &
+		python3 ${SLACK_APP}/src/server.py > ${BOX}/slack_app.log 2>&1 &
 	MS=$!
 }
 
@@ -605,6 +611,7 @@ S=\$(./kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.s
 printf "\${A}:\${P}"
 URL
 )
+	echo -e "Detected: ${HOST_PORT}\n"
 
 	echo -e "${GREEN}Read the first node public address${NC}"
 	POD_CARRIER=$(bash <<POD_CARRIER
@@ -612,6 +619,7 @@ a=(\$(./kubectl get nodes -o wide | head -n 2 | tail -n 1))
 printf \${a[6]}
 POD_CARRIER
 )
+	echo -e "Detected: ${POD_CARRIER}\n"
 
 	echo -e "${GREEN}Reset load.sh${NC}"
 	push_load_sh

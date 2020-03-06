@@ -44,21 +44,19 @@ def draw_anomaly(column, ranges, ts):
             for start, end in ranges[k]:
                 c = k1 if k ==1 else k2
                 ax.axvspan(start, end-1, color=c, alpha = 0.16 * k)
-
         plt.savefig(fname)
     plt.close(fig)
 
 
+# s == reviews-v1|cluster.inbound|9080|http|reviews.default.svc.cluster.local.external.upstream_rq_time|P75
 def get_metric(s):
     return s.split('|', 1)[1]
 
-
 def get_service(s):
-    return s.split('|', 1)[0]
-
+    return s.split('|')[4].split('.', 1)[0]
 
 def get_pod(s):
-    return get_service(s)
+    return s.split('|', 1)[0]
 
 
 def process_anomalies(logging, column_filter=[]):
@@ -123,7 +121,7 @@ def process_anomalies(logging, column_filter=[]):
             ranges = []
             positions = []
         finally:
-#            with lock:
+    #            with lock:
             columns_handled.append(column)
             progress = str(len(columns_handled)) + '/' + str(len(df_matrix))  
             
