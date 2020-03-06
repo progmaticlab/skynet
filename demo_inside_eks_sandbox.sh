@@ -1,18 +1,24 @@
 #!/bin/bash
 
-NC='\e[0m'
 BOX=$(pwd)/.sandbox/
+IPC=${BOX}/.ipc
+
+function make_ipc() {
+	printf ${IPC}/$(python -c "import uuid; print(uuid.uuid1())")
+}
+
+NC='\e[0m'
 RED='\e[95m'
 SKYNET=${BOX}/skynet
 BOLD='\e[1m'
 CYAN='\e[96m'
 PATH=$PATH:$BOX
 GREEN='\e[92m'
-CURSOR_MUTEX=$BOX/.cursor
-HEALER_MUTEX=$BOX/.healer
-MONITOR_MUTEX=$BOX/.monitor
+CURSOR_MUTEX=$(make_ipc)
+HEALER_MUTEX=$(make_ipc)
+MONITOR_MUTEX=$(make_ipc)
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
-MONITOR_TRANSPORT=$BOX/.transport
+MONITOR_TRANSPORT=$(make_ipc)
 
 SLACK_APP=${BOX}/timeseries-vae-anomaly
 SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-"${BOX}/.slack_app_data"}
@@ -25,18 +31,14 @@ function rip() {
 	eval "local x=\$$1"
 	if [[ 0 -lt $x ]]
 	then
-		kill -KILL $x
+		kill -s 9 $x
 		wait $x 2>/dev/null
 		eval "$1=0"
 	fi
 }
 
-function make_uuid() {
-	python -c "import uuid; print(uuid.uuid1())"
-}
-
 function make_feedback() {
-	printf $BOX/fifo/$(make_uuid)
+	make_ipc
 }
 
 function protect_cursor() {
@@ -198,17 +200,29 @@ pushd $BOX > /dev/null
 
 MX=0
 MY=0
+function protect_monitor() {
+	if [[ 0 -lt ${MX} ]]
+	then
+		local g
+		exec {g}<${MONITOR_MUTEX}
+		flock -x ${g}
+		$* >&${MONITOR_CHANNEL}
+		eval "exec ${g}<&-"
+	fi
+}
+
+function query_anomalies_() {
+	local f=$1
+	printf "{\"command\": \"list_anomalies\", \"promise\": \"${f}\"}\0"
+}
+
 function query_anomalies() {
 	if [[ 0 -eq ${MX} ]]; then return -1; fi
 
 	local f=$(make_feedback)
 	mkfifo $f
 
-	local g
-	exec {g}<${MONITOR_MUTEX}
-	flock -x ${g}
-	printf "{\"command\": \"list_anomalies\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
-	eval "exec ${g}<&-"
+	protect_monitor query_anomalies_ $f
 
 	local j=$(< $f)
 	rm -f $f
@@ -230,8 +244,15 @@ function show_anomalies() {
 	for i in ${!a[*]}
 	do
 		local k=$((i + 4))
-		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ordinary(${BOLD}${b[$i]}${NC}), ml(${BOLD}${c[$i]}${NC})\033[u"
+#		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ordinary(${BOLD}${b[$i]}${NC}), ml(${BOLD}${c[$i]}${NC})\033[u"
+		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ml(${BOLD}${c[$i]}${NC})\033[u"
 	done
+}
+
+function query_anomalies_data_() {
+	local c=$1
+	local f=$2
+	printf "{\"command\": \"${c}\", \"promise\": \"${f}\"}\0"
 }
 
 function query_anomalies_data() {
@@ -242,11 +263,7 @@ function query_anomalies_data() {
 	local f=$(make_feedback)
 	mkfifo $f
 
-	local g
-	exec {g}<${MONITOR_MUTEX}
-	flock -x ${g}
-	printf "{\"command\": \"$cmd\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
-	eval "exec ${g}<&-"
+	protect_monitor query_anomalies_data_ $cmd $f
 
 	cat < $f > $dst
 	rm -f $f
@@ -268,17 +285,18 @@ function pull_anomalies() {
 	fi
 }
 
+function pull_learning_status_() {
+	local f=$1
+	printf "{\"command\": \"is_learning\", \"promise\": \"${f}\"}\0"
+}
+
 function pull_learning_status() {
 	if [[ 0 -lt ${MX} ]]
 	then
 		local f=$(make_feedback)
 		mkfifo $f
 
-		local g
-		exec {g}<${MONITOR_MUTEX}
-		flock -x ${g}
-		printf "{\"command\": \"is_learning\", \"promise\": \"${f}\"}\0" >&${MONITOR_CHANNEL}
-		eval "exec ${g}<&-"
+		protect_monitor pull_learning_status_ $f
 
 		local j=$(< $f)
 		rm -f $f
@@ -290,17 +308,18 @@ function pull_learning_status() {
 	fi
 }
 
-function toggle_learning() {
-	if [[ 0 -lt ${MX} ]]
-	then
-		local g
-		exec {g}<${MONITOR_MUTEX}
-		flock -x ${g}
-		printf "{\"command\": \"toggle_learning\"}\0" >&${MONITOR_CHANNEL}
-		eval "exec ${g}<&-"
-	fi
+function toggle_learning_() {
+	printf "{\"command\": \"toggle_learning\"}\0"
 }
 
+function toggle_learning() {
+	protect_monitor toggle_learning_
+}
+
+function reset_anomalies_() {
+	printf "{\"command\": \"reset_anomalies\"}\0"
+ }
+ 
 function reset_anomalies() {
 	if [[ 0 -lt ${MX} ]]
 	then
@@ -312,12 +331,17 @@ function reset_anomalies() {
 			protect_cursor show_stressing_v1_status
 			protect_cursor show_stressing_v2_status
 		fi
-		local g
-		exec {g}<${MONITOR_MUTEX}
-		flock -x ${g}
-		printf "{\"command\": \"reset_anomalies\"}\0" >&${MONITOR_CHANNEL}
-		eval "exec ${g}<&-"
+		protect_monitor reset_anomalies_
 	fi
+}
+
+function reset_pod_service_() {
+	local p=$1
+	printf "{\"command\": \"reset_pod_service\", \"pod\": \"${p}\"}\0"
+}
+
+function reset_pod_service() {
+	protect_monitor reset_pod_service_ $1
 }
 
 function track_anomalies() {
@@ -338,16 +362,16 @@ function start_monitor() {
 	MY=$!
 }
 
+function stop_monitor_() {
+	printf "{\"command\": \"quit\"}\0"
+}
+
 function stop_monitor() {
 	if [[ 0 -lt $MX ]]
 	then
 		rip "MY"
 
-		local g
-		exec {g}<${MONITOR_MUTEX}
-		flock -x ${g}
-		printf "{\"command\": \"quit\"}\0" >&${MONITOR_CHANNEL}
-		eval "exec ${g}<&-"
+		protect_monitor stop_monitor_
 
 		wait $MX 2>/dev/null
 		MX=0
@@ -369,11 +393,7 @@ function start_slack_app() {
 }
 
 function stop_slack_app() {
-	if [[ 0 -lt $MS ]]
-	then
-		rip "MS"
-		MX=0
-	fi
+	rip "MS"
 }
 
 ################################################################################
@@ -382,8 +402,9 @@ function stop_slack_app() {
 function do_pod_restart() {
 	echo ${BOX}/kubectl delete pod $1 >> ${BOX}/kube.log
 	${BOX}/kubectl delete pod $1 2>> ${BOX}/kube.log 1>&2
-#	sleep 10
 	echo 1 >& $2
+
+	reset_pod_service $1
 }
 
 function show_job_progress() {
@@ -408,7 +429,7 @@ function conduct_pod_restart() {
 	local j=0
 	while ! read -t 0 -u $d
 	do
-		protect_cursor show_job_progress $j "deleting pod $1"
+		protect_cursor show_job_progress $j "replacing pod $1"
 		usleep 150000
 		((++j))
 	done
@@ -444,7 +465,6 @@ function abort_pod_restart() {
 MR=()
 function list_restart_eligible_pods() {
 	query_anomalies | jq '.[].name' | tr -d '"'
-#	echo "aaa" "bbb" "ccc"
 }
 
 function show_restart_pod_menu() {
@@ -456,7 +476,7 @@ function show_restart_pod_menu() {
 
 	local a=($(list_restart_eligible_pods))
 	MR=()
-	for i in ${a[@]}; do MR+=("delete pod $i"); done
+	for i in ${a[@]}; do MR+=("replace pod $i"); done
 	MR+=(back)
 	for ((i=0; i< ${#MR[@]}; ++i));
 	do
@@ -502,33 +522,47 @@ function show_restart_pod_dialog() {
 
 HC=
 function collapse() {
-	rip "HC"
 	abort_pod_restart
 	stop_monitor
 	stop_loading
 	stop_collecting
 	stop_slack_app
+	rip "HC"
 }
 
 function care_parent() {
 	local p=$1
+
 	while true
-	do
-		sleep 2
-		if ! kill -s 0 $p 2>/dev/null
-		then
-			collapse
-			kill -s 9 -$p 2>/dev/null
-			break
-		fi
-	done
+        do
+               sleep 2
+               if ! kill -s 0 $p 2>/dev/null
+               then
+                       collapse
+                       kill -s 9 -$p 2>/dev/null
+                       break
+               fi
+        done
+}
+
+function deploy_layout() {
+	rm -rf ${IPC}
+	mkdir -p ref
+	mkdir -p data
+	mkdir -p ${IPC}
+	touch ${CURSOR_MUTEX}
+	touch ${HEALER_MUTEX}
+	touch ${MONITOR_MUTEX}
 }
 
 function do_prepare() {
 	echo -e "\033[2J\033[HStarting"
 
 	echo
-	pip3 list  --format=legacy | (
+	echo -e "${GREEN}Deploy layout${NC}"
+	deploy_layout
+
+	pip3 list 2>/dev/null | (
 		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0 ["slackclient"]= ["requests"]=)
 		while read x
 		do
@@ -551,6 +585,7 @@ function do_prepare() {
 		done
 		if [[ "$x" ]]
 		then
+			echo
 			echo -e "${GREEN}Install python packages${NC}"
 			echo "pip3 install$x --upgrade --user"
 			pip3 install$x --upgrade --user
@@ -581,15 +616,6 @@ POD_CARRIER
 	echo -e "${GREEN}Reset load.sh${NC}"
 	push_load_sh
 
-	echo -e "${GREEN}Deploy layout${NC}"
-	rm -rf fifo
-	mkdir -p ref
-	mkdir -p data
-	mkdir -p fifo
-	touch ${HEALER_MUTEX}
-	touch ${CURSOR_MUTEX}
-	touch ${MONITOR_MUTEX}
-
 	if ! [[ -d skynet ]]
 	then
 		echo -e "${GREEN}Deploy Skynet${NC}"
@@ -602,7 +628,7 @@ POD_CARRIER
 
 	if ! [[ -d timeseries-vae-anomaly ]]
 	then
-		echo -e "${GREEN}Deploy Skynet${NC}"
+		echo -e "${GREEN}Deploy timeseries-vae-anomaly${NC}"
 		git clone https://github.com/progmaticlab/timeseries-vae-anomaly
 	else 
 		pushd timeseries-vae-anomaly
@@ -632,7 +658,7 @@ do_prepare
 MM=()
 function show_main_menu() {
 	MM=("${ML[$L]}" "${MC[$C]}" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}")
-	MM+=("reset anomalies" "delete unhealthy pod" quit)
+	MM+=("reset anomalies" "replace unhealthy pod" quit)
 
 	printf "\033[13;0H\033[KEnter the number of the action:\n\n"
 	for ((i=0; i< ${#MM[@]}; ++i));

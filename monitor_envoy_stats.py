@@ -879,6 +879,19 @@ class Servant:
 
 		return self._set_value(json_, R)
 
+	def reset_pod_service(self, json_):
+		if "pod" not in json_:
+			logging.error("There is no pod element")
+			return False
+
+		n = str(json_["pod"])
+		for p in filter(lambda p_: n == p_.full_name, self.monitor.pods.values()):
+			p.return_to_normal()
+			return True
+
+		logging.error("Unknown pod %s", n)
+		return True
+
 	def reset_anomalies(self, json_):
 		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
 			p.return_to_normal()
@@ -887,6 +900,12 @@ class Servant:
 
 	def query_anomalies_info(self, json_):
 		af = deepcopy(ml.anomalies_found)
+		for v in af.values():
+			s = v["service"]
+			for p in filter(lambda p_: s == p_.name, self.monitor.pods.values()):
+				v["pod"] = p.full_name
+				break
+
 		return self._set_value(json_, af)
 
 
@@ -916,7 +935,7 @@ class Background(Monitor):
 		c = json_['command']
 		o = getattr(Servant(self), c, None)
 		if not callable(o):
-			general_logger.error('Bad command name "%s"' % c)
+			logging.error('Bad command name "%s"', c)
 			return False
 
 		return o(json_)
