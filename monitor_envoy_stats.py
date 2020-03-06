@@ -901,10 +901,8 @@ class Servant:
 	def query_anomalies_info(self, json_):
 		af = deepcopy(ml.anomalies_found)
 		for v in af.values():
-			s = v["service"]
-			for p in filter(lambda p_: s == p_.name, self.monitor.pods.values()):
-				v["pod"] = p.full_name
-				break
+			p = self.monitor.pods[v["service"]]
+			v["pod"] = p.full_name
 
 		return self._set_value(json_, af)
 
