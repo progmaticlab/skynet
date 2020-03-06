@@ -765,6 +765,8 @@ class Monitor:
 				
 		self.process_pods(self.args.path, self.args.pods, True)
 		self.start_timestamp = self.current_timestamp
+		if not self.start_timestamp:
+			self.start_timestamp = subprocess.check_output("date -Iseconds", shell=True, universal_newlines=True).strip()
 
 	def run(self):
 		global learning
