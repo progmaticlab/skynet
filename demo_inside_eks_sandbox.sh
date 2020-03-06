@@ -20,8 +20,12 @@ MONITOR_MUTEX=$(make_ipc)
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 MONITOR_TRANSPORT=$(make_ipc)
 
-SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-'./ml_data'}
+SLACK_APP=${BOX}/timeseries-vae-anomaly
+SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-"${BOX}/.slack_app_data"}
 SLACK_APP_PORT_NUMBER=${SLACK_APP_PORT_NUMBER:-8080}
+SLACK_DATA_ANOMALY="${SLACK_DATA_FOLDER}/anomaly.json"
+SLACK_DATA_METRICS="${SLACK_DATA_FOLDER}/metrics_0_filter.csv.json"
+
 
 function rip() {
 	eval "local x=\$$1"
@@ -53,9 +57,11 @@ function json2csv_metrics() {
 	local ret=0
 	python -c "
 import json, csv, sys
+print('Start json2csv_metrics...')
 with open('$src', 'r') as fs:
 	data = json.load(fs)
 	if (len(data) == 0):
+		print('done - nothing to do')
 		sys.exit(-1)
 	with open('$dst', 'w') as fd:
 		d = csv.writer(fd)
@@ -63,17 +69,25 @@ with open('$src', 'r') as fs:
 		d.writerow(keys)
 		index = 0
 		max_index = len(data[keys[0]]['ts'])
+		for k in keys:
+			nm = len(data[k]['ts'])
+			if nm < max_index:
+				max_index = nm
+				print('WARN: max_index: %s: replace %s with ' % (k, max_index, nm))
 		while (index < max_index):
 			row = [index]
 			for k in keys:
 				row.append(data[k]['ts'][index])
 			d.writerow(row)
 			index += 1
+print('done')
+sys.exit(0)
 " >> $dbg_dir/json2csv_metrics.log 2>&1 || ret=1
 	if [[ $ret != 0 ]] ; then
 		cp $src $dbg_dir/src.json
 		[ -f $dst ] && cp $dst $dbg_dir/dst.csv
 	fi
+	echo "ret code: $ret" >> $dbg_dir/json2csv_metrics.log 2>&1 
 	return $ret
 }
 
@@ -256,21 +270,10 @@ function query_anomalies_data() {
 }
 
 function send_anomalies_info_to_slackapp() {
-	local f1=$(make_feedback)
-	local f2=$(make_feedback)
-	query_anomalies_data query_anomalies_info $f1
-	if json2csv_metrics $f1 $f2 ; then
-		scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
-			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
-			$f1 ec2-user@$POD_CARRIER:~/ml_data/anomaly.json >/dev/null 2>&1
-		scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
-			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
-			$f2 ec2-user@$POD_CARRIER:~/ml_data/metrics_0_filter.csv >/dev/null 2>&1
-		ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null \
-			-o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} \
-			ec2-user@$POD_CARRIER curl http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >/dev/null 2>&1
+	query_anomalies_data query_anomalies_info $SLACK_DATA_ANOMALY
+	if json2csv_metrics $SLACK_DATA_ANOMALY $SLACK_DATA_METRICS ; then
+		curl http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >> ${BOX}/slack_app_curl.log 2>&1
 	fi
-	rm -f $f1 $f2
 }
 
 function pull_anomalies() {
@@ -373,6 +376,24 @@ function stop_monitor() {
 		wait $MX 2>/dev/null
 		MX=0
 	fi
+}
+
+################################################################################
+## Slack app block
+MS=0
+function start_slack_app() {
+	SLACK_CHANNEL=$SLACK_CHANNEL \
+	SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN \
+	HOST_NAME='localhost' \
+	PORT_NUMBER=$SLACK_APP_PORT_NUMBER \
+	DATA_FOLDER=$SLACK_DATA_FOLDER \
+	SAMPLES_FOLDER=$SLACK_DATA_FOLDER \
+		python3 ${SLACK_APP}/src/server.py ${BOX}/slack_app.log 2>&1 &
+	MS=$!
+}
+
+function stop_slack_app() {
+	rip "MS"
 }
 
 ################################################################################
@@ -505,6 +526,7 @@ function collapse() {
 	stop_monitor
 	stop_loading
 	stop_collecting
+	stop_slack_app
 	rip "HC"
 }
 
@@ -541,7 +563,7 @@ function do_prepare() {
 	deploy_layout
 
 	pip3 list 2>/dev/null | (
-		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0)
+		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0 ["slackclient"]= ["requests"]=)
 		while read x
 		do
 			y=($x)
@@ -598,10 +620,27 @@ POD_CARRIER
 	then
 		echo -e "${GREEN}Deploy Skynet${NC}"
 		git clone https://github.com/progmaticlab/skynet
+	else 
+		pushd skynet
+		git pull
+		popd
+	fi
+
+	if ! [[ -d timeseries-vae-anomaly ]]
+	then
+		echo -e "${GREEN}Deploy timeseries-vae-anomaly${NC}"
+		git clone https://github.com/progmaticlab/timeseries-vae-anomaly
+	else 
+		pushd timeseries-vae-anomaly
+		git pull
+		popd
 	fi
 
 	echo -e "${GREEN}Start the monitor${NC}"
 	start_monitor
+
+	echo -e "${GREEN}Start the slack app${NC}"
+	start_slack_app
 
 	echo -e "${GREEN}Query if learning${NC}"
 	pull_learning_status

@@ -9,10 +9,12 @@ CONTEXT_NAME=${CONTEXT_NAME:-'istio-demo'}
 
 SLACK_CHANNEL=${SLACK_CHANNEL:-'skynet'}
 SHADOWCAT_BOT_TOKEN=${SHADOWCAT_BOT_TOKEN:-''}
-
-SLACK_APP_PORT_NUMBER=${SLACK_APP_PORT_NUMBER:-8080}
+SLACK_APP_PORT_NUMBER=${SLACK_APP_PORT_NUMBER:-80}
 SLACK_SAMPLES_FOLDER=${SLACK_SAMPLES_FOLDER:-'./ml_samples'}
 SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-'./ml_data'}
+# Disable slack on EKS
+SHADOWCAT_BOT_TOKEN=""
+
 
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 
@@ -183,10 +185,10 @@ if [[ -n "$SHADOWCAT_BOT_TOKEN" ]] ; then
 		scp -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null \
 			-i ${SSH_PUBLIC_KEY/%[.]pub/} $b/$i ec2-user@$p:~/
 	done
-	cat <<INSTRUCTIONS | ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} ec2-user@$p
+	cat <<INSTRUCTIONS | ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} ec2-user@$p sudo -- bash -
 set -e
 git clone https://github.com/progmaticlab/timeseries-vae-anomaly
-sudo pip3 install slackclient requests pandas matplotlib
+pip3 install slackclient requests pandas matplotlib
 if [[ -f ./timeseries-vae-anomaly.pid ]] ; then
 	kill \$(cat ./timeseries-vae-anomaly.pid)
 fi
