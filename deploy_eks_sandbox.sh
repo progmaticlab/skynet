@@ -26,6 +26,15 @@ then
 	echo
 fi
 
+if ! which pip ; then
+	echo -e "${GREEN}Install pip2${NC}"
+	sudo yum install -y python2-pip
+fi
+if ! which python3 || ! which pip3 ; then
+	echo -e "${GREEN}Install python3${NC}"
+	sudo yum install -y python3 python3-pip
+fi
+
 if [ ! -f ~/.local/bin/aws ] ; then
 	echo -e "${GREEN}Install AWS cli${NC}"
 	pip3 install awscli --upgrade --user
