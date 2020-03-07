@@ -286,13 +286,13 @@ function send_anomalies_info_to_slackapp() {
 function process_responses_from_slack() {
 	echo "curl -s ${SLACK_APP_PROXY_URL}/analysis/response" >>${BOX}/slack_app_client.log
 	local data=$(curl -s ${SLACK_APP_PROXY_URL}/analysis/response 2>>${BOX}/slack_app_client.log)
-	echo "read data: $data" >> ${BOX}/slack_app_curl.log
+	echo "read data: $data" >> ${BOX}/slack_app_client.log
 	local action=$(echo $data | cut -d ':' -f 1)
 	if [[ 'suggestion_1_on' == "$action" ]] ; then
 		echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
 		curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
 		local pod=$(echo $data | cut -d ':' -s -f 2)
-		echo "restart pod $pod" >> ${BOX}/slack_app_curl.log
+		echo "restart pod $pod" >> ${BOX}/slack_app_client.log
 		do_pod_restart $pod
 	fi
 }
@@ -411,7 +411,7 @@ function start_slack_app() {
 	PORT_NUMBER=$SLACK_APP_PORT_NUMBER \
 	DATA_FOLDER=$SLACK_DATA_FOLDER \
 	SAMPLES_FOLDER=$SLACK_DATA_FOLDER \
-		python3 ${SLACK_APP}/src/server.py 2>&1 | tee -a ${BOX}/slack_app_server.log >/dev/null 2>&1 &
+		python3 ${SLACK_APP}/src/server.py >>${BOX}/slack_app_server.log 2>&1 &
 	MS=$!
 }
 
