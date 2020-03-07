@@ -2,138 +2,45 @@
 
 This utility is a monitoring tool which allows analysing of k8s application and its wellbeing.
 
-## Utility preparation
+## Prepare a VM for demo application
+If could be Amazon EC2 instance based on the image
+"Amazon Linux 2 AMI (HVM), SSD Volume Type - ami-0e8c04af2729ff1bb (64-bit x86)"
+Ssh to the VM.
 
-Install tabulate:
 
+## Update packages, install git and download demo application
 ``` bash
-pip install tabulate
+sudo yum update -y
+sudo yum install -y git
+git clone https://github.com/progmaticlab/skynet
 ```
 
-## Sample app deployment
-
-Prepare 3 machines. Deploy Kubernetes. Let's suppose that your machines are named node1, node2, node3.
-
-Deploy Istio for Bookinfo (do not deploy Bookinfo):
-https://istio.io/docs/examples/bookinfo/
-
-And add telemetry collection:
-https://istio.io/docs/tasks/observability/metrics/collecting-metrics/
-
-Fetch custom istio:
-
-``` bash
-git clone https://github.com/alexandrelevine/istio
-```
-
-Allow insecure docker registires (make sure that it contains the following string):
-
-``` bash
-cat /etc/docker/daemon.json
-{
-    "insecure-registries": ["node1:5000"]
-}
-```
-
-Bring up local docker registry:
-
-``` bash
-docker run -d -p 5000:5000 --restart=always --name registry registry:2
-```
-
-Build the app and push containers (it's supposed that version 1.1 is pushed in this example):
-
-``` bash
-cd istio/samples/bookinfo
-sudo src/build-services.sh 1.1 "node1:5000/istio"
-sudo docker image ls | grep bookinfo | awk '{ print $1":1.1" }' | xargs -n 1 sudo docker push
-```
-
-Deploy the Bookinfo app following the guidelines (https://istio.io/docs/examples/bookinfo/) but use manifest from here:
-
-``` bash
-kubectl apply -f platform/kube/bookinfo.yaml
-```
-
-The following is to be automated:
-
-Deploy stress utility to all of the nodes and copy it to /host:
-
-``` bash
-sudo apt-get install stress
-sudo cp /usr/bin/stress /host
-```
-
-Fetch the tool, place stress utilities into /etc/host folders on all nodes:
-
-``` bash
-git clone https://github.com/alexandrelevine/envoy
-sudo mkdir -p /host
-sudo cp envoy/load.sh /host
-sudo cp envoy/stress* /host
-```
-
-Create data file for disk load on all nodes:
-
-``` bash
-sudo dd if=/dev/zero of=/host/disk_load.data count=1024 bs=1024
-```
-
-## Usage
-
-It's supposed that pwd is this cloned repo from where you run scripts.
-As such it's suggested to create directories for data and reference file
-
-``` bash
-mkdir ../data
-mkdir ../ref
-```
-
-Run data collector (in separate terminal)
-
-``` bash
-./envoy_stats.sh
-```
-
-Run monitoring utility (in separate window) and run it in maximized window to accommodate the table
-
-``` bash
-./monitor_envoy_stats.py ../data -r ../ref/refstats -p product details ratings reviews-v1 reviews-v2 reviews-v3
-```
-
-Set GATEWAY_URL as is described in bookinfo page:
-https://istio.io/docs/examples/bookinfo/
-
-Run test load (in separate terminal)
-
-``` bash
-./request.sh
-```
-
-## Demo
-
-In order to use SlackBot it is needed to privide slack channel and auth token:
+## If needed enable data SlackBot Application
 ``` bash
 export SLACK_CHANNEL=skynet
 export SHADOWCAT_BOT_TOKEN="xoxb-******"
 ```
-Slack Bot App is to be created in advance, the app is to be added into the Slack channel and granted requried permisions.
-Deploy sandbox tool will deploy slack bot app onto the same EKS machine.
+Slack Bot App is to be created in advance, the app is to be added into the Slack channel 
+and granted requried permisions.
 Permissions required for the app: calls:read, calls:write, chat:write, files:write.
 For backward notifications by buttons it is needed to manually set Request URL
-for the app on Slack site like: http://54.214.233.135:8080/slack/interactive/
+for the app on Slack site: http://54.214.233.135:8080/slack/proxy/
 It is because there is no way to do it dynamically.
- 
-It's supposed that pwd is this cloned repo from where you run scripts.
-Run the script to deploy test environment inside AWS, follow instructions
 
+
+## Deploy Amazon EKS cluster
+For the first run you will be asked to provide your Amazon access key and
+secret key as the applicaion needs to control Amazon EKS.
+Your AMI account needs to have rights to control Amazon EKS.
 ``` bash
-bash ./deploy_eks_sandbox.sh
+# provide name of cluster and context
+export CLUSTER_NAME='istio-demo-cluster'
+export CONTEXT_NAME='istio-demo'
+./skynet/deploy_eks_sandbox.sh
 ```
 
-Run another script to experiment with the deployed application. Execution
-should start from the folder of a successful deploy_eks_sandbox.sh run.
 
+## Run demo application
 ``` bash
-bash ./demo_inside_eks_sandbox.sh
+./skynet/demo_inside_eks_sandbox.sh
 ```
