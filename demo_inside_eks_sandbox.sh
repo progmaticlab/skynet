@@ -568,6 +568,10 @@ function do_prepare() {
 	echo -e "${GREEN}Deploy layout${NC}"
 	deploy_layout
 
+	if ! which jq ; then
+		sudo yum install -y jq
+	fi
+
 	pip3 list 2>/dev/null | (
 		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0 ["slackclient"]= ["requests"]=)
 		while read x
