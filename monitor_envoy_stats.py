@@ -14,6 +14,7 @@ import time
 import fcntl
 import select
 import threading
+import subprocess
 from copy import deepcopy
 from curses import wrapper
 from os.path import isfile, join
