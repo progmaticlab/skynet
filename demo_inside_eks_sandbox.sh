@@ -21,10 +21,11 @@ SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 MONITOR_TRANSPORT=$(make_ipc)
 
 SLACK_APP=${BOX}/timeseries-vae-anomaly
-SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-"${BOX}/.slack_app_data"}
+SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-"${BOX}/slack_app_data"}
 SLACK_APP_PORT_NUMBER=${SLACK_APP_PORT_NUMBER:-8080}
 SLACK_DATA_ANOMALY="${SLACK_DATA_FOLDER}/anomaly.json"
 SLACK_DATA_METRICS="${SLACK_DATA_FOLDER}/metrics_0_filter.csv"
+SLACK_APP_PROXY_URL=${SLACK_APP_PROXY_URL:-"http://54.214.233.135:8080"}
 
 
 function rip() {
@@ -277,7 +278,22 @@ function query_anomalies_data() {
 function send_anomalies_info_to_slackapp() {
 	query_anomalies_data query_anomalies_info $SLACK_DATA_ANOMALY
 	if json2csv_metrics $SLACK_DATA_ANOMALY $SLACK_DATA_METRICS ; then
-		curl -v http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >> ${BOX}/slack_app_curl.log 2>&1
+		echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run" >>${BOX}/slack_app_client.log
+		curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >>${BOX}/slack_app_client.log 2>&1
+	fi
+}
+
+function process_responses_from_slack() {
+	echo "curl -s ${SLACK_APP_PROXY_URL}/analysis/response" >>${BOX}/slack_app_client.log
+	local data=$(curl -s ${SLACK_APP_PROXY_URL}/analysis/response 2>>${BOX}/slack_app_client.log)
+	echo "read data: $data" >> ${BOX}/slack_app_curl.log
+	local action=$(echo $data | cut -d ':' -f 1)
+	if [[ 'suggestion_1_on' == "$action" ]] ; then
+		echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
+		curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		local pod=$(echo $data | cut -d ':' -s -f 2)
+		echo "restart pod $pod" >> ${BOX}/slack_app_curl.log
+		do_pod_restart $pod
 	fi
 }
 
@@ -353,6 +369,7 @@ function track_anomalies() {
 	while true
 	do
 		pull_anomalies
+		process_responses_from_slack
 		sleep 3
 	done
 }
@@ -394,12 +411,17 @@ function start_slack_app() {
 	PORT_NUMBER=$SLACK_APP_PORT_NUMBER \
 	DATA_FOLDER=$SLACK_DATA_FOLDER \
 	SAMPLES_FOLDER=$SLACK_DATA_FOLDER \
-		python3 ${SLACK_APP}/src/server.py 2>&1 | tee -a ${BOX}/slack_app.log >/dev/null 2>&1 &
+		python3 ${SLACK_APP}/src/server.py 2>&1 | tee -a ${BOX}/slack_app_server.log >/dev/null 2>&1 &
 	MS=$!
 }
 
 function stop_slack_app() {
+	echo "stopping slack app... pid=$MS"
 	rip "MS"
+	[[ -e "/proc/$MS" ]] && { 
+		pidstat -p $MS
+	}
+	echo "finished"
 }
 
 ################################################################################
