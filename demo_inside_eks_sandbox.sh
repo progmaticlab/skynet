@@ -411,7 +411,7 @@ function start_slack_app() {
 	PORT_NUMBER=$SLACK_APP_PORT_NUMBER \
 	DATA_FOLDER=$SLACK_DATA_FOLDER \
 	SAMPLES_FOLDER=$SLACK_DATA_FOLDER \
-		python3 ${SLACK_APP}/src/server.py 2>&1 | tee -a ${BOX}/slack_app_server.log >/dev/null 2>&1 &
+		python3 ${SLACK_APP}/src/server.py >>${BOX}/slack_app_server.log 2>&1 &
 	MS=$!
 }
 
