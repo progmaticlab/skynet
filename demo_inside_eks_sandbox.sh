@@ -568,7 +568,7 @@ function do_prepare() {
 	echo -e "${GREEN}Deploy layout${NC}"
 	deploy_layout
 
-	if ! which jq ; then
+	if ! which jq > /dev/null 2>&1 ; then
 		sudo yum install -y jq
 	fi
 
