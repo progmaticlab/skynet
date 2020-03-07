@@ -26,11 +26,11 @@ then
 	echo
 fi
 
-if ! which pip ; then
+if ! which pip > /dev/null 2>&1 ; then
 	echo -e "${GREEN}Install pip2${NC}"
 	sudo yum install -y python2-pip
 fi
-if ! which python3 || ! which pip3 ; then
+if ! which python3 > /dev/null 2>&1  || ! which pip3 > /dev/null 2>&1 ; then
 	echo -e "${GREEN}Install python3${NC}"
 	sudo yum install -y python3 python3-pip
 fi
