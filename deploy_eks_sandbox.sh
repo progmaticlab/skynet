@@ -216,9 +216,6 @@ echo SlackBot App pid
 cat ./timeseries-vae-anomaly.pid
 INSTRUCTIONS
 	true # TODO: ignore slack app installation for now
-
-else
-	echo -e "${GREEN}Skipped - slack API Token is not provided${NC}"
 fi
 
 ) || (
