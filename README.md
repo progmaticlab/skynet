@@ -3,7 +3,7 @@
 This utility is a monitoring tool which allows analysing of k8s application and its wellbeing.
 
 ## Prepare a VM for demo application
-If could be Amazon EC2 instance based on the image
+It could be Amazon EC2 instance based on the image
 "Amazon Linux 2 AMI (HVM), SSD Volume Type - ami-0e8c04af2729ff1bb (64-bit x86)"
 Ssh to the VM.
 
@@ -31,7 +31,7 @@ It is because there is no way to do it dynamically.
 ## Deploy Amazon EKS cluster
 For the first run you will be asked to provide your Amazon access key and
 secret key as the applicaion needs to control Amazon EKS.
-Your AMI account needs to have rights to control Amazon EKS.
+Your IAM account needs to have rights to control Amazon EKS.
 ``` bash
 # provide name of cluster and context
 export CLUSTER_NAME='istio-demo-cluster'
