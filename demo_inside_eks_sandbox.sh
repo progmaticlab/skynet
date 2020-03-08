@@ -546,6 +546,18 @@ function show_restart_pod_dialog() {
 }
 
 ################################################################################
+## Cleanup data block
+
+function cleanup_data() {
+	local suffix=$(date +"%T.%N")
+	mkdir -p ${BOX}/archive
+	mv ${BOX}/data ${BOX}/archive/data.$suffix
+	mv ${BOX}/ref ${BOX}/archive/ref.$suffix
+	mkdir -p ${BOX}/ref
+	mkdir -p ${BOX}/data
+}
+
+################################################################################
 ## Starting stage
 
 HC=
@@ -692,7 +704,7 @@ do_prepare
 MM=()
 function show_main_menu() {
 	MM=("${ML[$L]}" "${MC[$C]}" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}")
-	MM+=("reset anomalies" "replace unhealthy pod" quit)
+	MM+=("reset anomalies" "replace unhealthy pod" "reset all data" quit)
 
 	printf "\033[13;0H\033[KEnter the number of the action:\n\n"
 	for ((i=0; i< ${#MM[@]}; ++i));
@@ -744,6 +756,14 @@ function show_main_menu_dialog() {
 			7)
 				stty echo
 				show_restart_pod_dialog
+			;;
+			8)
+				L=0; toggle_loading; protect_cursor show_loading_status
+				C=0; toggle_collecting; protect_cursor show_collecting_status
+				T=0; toggle_learning; protect_cursor show_training_status
+				reset_anomalies
+				cleanup_data
+				T=1; toggle_learning; protect_cursor show_training_status
 			;;
 			${#MM[@]})
 				stty echo
