@@ -129,14 +129,34 @@ L=0
 LC=0
 ML=(load 'stop loading')
 function stop_loading() {
+	echo "stop pid=$LC" >> $BOX/requests.log
 	rip "LC"
+	echo "stop pid=$LC done" >> $BOX/requests.log
+}
+
+function show_loading_stats() {
+	echo -e "show_loading_stats:\n$@" >> $BOX/requests.log
+	local i=4
+	local msg=
+	echo -e "$@" | while read msg  ; do
+		printf "\033[s\033[$i;80H${CYAN}${msg}${NC}\033[u"
+		(( i+=1 ))
+	done
+}
+
+function do_loading() {
+	while true; do
+		local stat=$(GATEWAY_URL="$HOST_PORT" ${SKYNET}/request.sh 10 | awk '/time_average:/ {print("aver_rq_time: "$4"\nerrors: "$6"\nreqs: "$2)}')
+		show_loading_stats "$stat"
+	done
 }
 
 function toggle_loading() {
 	if [[ 1 -eq $L ]]
 	then
-		GATEWAY_URL="$HOST_PORT" bash "${SKYNET}/request.sh" 2>/dev/null 1>&2 &
+		do_loading &
 		LC=$!
+		echo "start pid=$LC" >> $BOX/requests.log
 	else
 		stop_loading
 	fi
@@ -783,6 +803,7 @@ pushd skynet > /dev/null
 echo -e "\033[2J\033[HRunning"
 echo -e "\033[3;0H${BOLD}INDICATORS${NC}:"
 echo -e "\033[3;40H${BOLD}ANOMALIES${NC}:"
+echo -e "\033[3;80H${BOLD}LOAD STATS${NC}:"
 show_loading_status
 show_collecting_status
 show_stressing_v1_status
