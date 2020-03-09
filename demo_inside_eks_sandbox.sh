@@ -136,17 +136,17 @@ function stop_loading() {
 
 function show_loading_stats() {
 	echo -e "show_loading_stats:\n$@" >> $BOX/requests.log
-	local i=4
-	local msg=
-	echo -e "$@" | while read msg  ; do
-		printf "\033[s\033[$i;80H${CYAN}${msg}${NC}\033[u"
-		(( i+=1 ))
-	done
+	# local i=4
+	# local msg=
+	# echo -e "$@" | while read msg  ; do
+	# 	printf "\033[s\033[$i;80H${CYAN}${msg}${NC}\033[u"
+	# 	(( i+=1 ))
+	# done
 }
 
 function do_loading() {
 	while true; do
-		local stat=$(GATEWAY_URL="$HOST_PORT" ${SKYNET}/request.sh 10 | awk '/time_average:/ {print("aver_rq_time: "$4"\nerrors: "$6"\nreqs: "$2)}')
+		local stat=$(GATEWAY_URL="$HOST_PORT" ${SKYNET}/request.sh 10 2>&1 | awk '/time_average:/ {print("aver_rq_time: "$4"\nerrors: "$6"\nreqs: "$2)}')
 		show_loading_stats "$stat"
 	done
 }
@@ -273,6 +273,8 @@ function show_anomalies() {
 #		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ordinary(${BOLD}${b[$i]}${NC}), ml(${BOLD}${c[$i]}${NC})\033[u"
 		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ml(${BOLD}${c[$i]}${NC})\033[u"
 	done
+	local samples=$(ls ${BOX}/data/product* 2>/dev/null | wc -l)
+	printf "\033[s\033[9;2H${CYAN}Samples count${NC}: ${samples}  \033[u"
 }
 
 function query_anomalies_data_() {
@@ -313,7 +315,7 @@ function process_responses_from_slack() {
 		curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
 		local pod=$(echo $data | cut -d ':' -s -f 2)
 		echo "restart pod $pod" >> ${BOX}/slack_app_client.log
-		do_pod_restart $pod
+		do_pod_restart $pod /dev/null
 	fi
 }
 
@@ -803,7 +805,7 @@ pushd skynet > /dev/null
 echo -e "\033[2J\033[HRunning"
 echo -e "\033[3;0H${BOLD}INDICATORS${NC}:"
 echo -e "\033[3;40H${BOLD}ANOMALIES${NC}:"
-echo -e "\033[3;80H${BOLD}LOAD STATS${NC}:"
+# echo -e "\033[3;80H${BOLD}LOAD STATS${NC}:"
 show_loading_status
 show_collecting_status
 show_stressing_v1_status
