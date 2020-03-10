@@ -4,7 +4,7 @@ set -e
 
 NC='\e[0m'
 GREEN='\e[92m'
-CLUSTER_NAME=${CLUSTER_NAME:-'istio-demo-cluster-no4'}
+CLUSTER_NAME=${CLUSTER_NAME:-"istio-demo-cluster-$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)"}
 CONTEXT_NAME=${CONTEXT_NAME:-'istio-demo'}
 
 SLACK_CHANNEL=${SLACK_CHANNEL:-'skynet'}
@@ -182,6 +182,7 @@ INSTRUCTIONS
 	P=$($b/kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
 	S=$($b/kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="https")].port}')
 
+	echo -e "${GREEN}Cluster ID:${NC} ${CLUSTER_NAME}"
 	echo -e "${GREEN}ingress IP:${NC} ${A}"
 	echo -e "${GREEN}ingress port:${NC} ${P}"
 	echo -e "${GREEN}ingress secure port:${NC} ${S}"
