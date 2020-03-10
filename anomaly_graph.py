@@ -52,11 +52,11 @@ def draw_anomaly(column, ranges, ts):
 def get_metric(s):
     return s.split('|', 1)[1]
 
-def get_service(s):
-    return s.split('|')[4].split('.', 1)[0]
-
 def get_pod(s):
     return s.split('|', 1)[0]
+
+def get_service(s):
+    return get_pod(s).split('-', 1)[0]
 
 
 def process_anomalies(logging, column_filter=[]):

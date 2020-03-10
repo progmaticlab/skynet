@@ -310,20 +310,22 @@ function process_responses_from_slack() {
 	local data=$(curl -s ${SLACK_APP_PROXY_URL}/analysis/response 2>>${BOX}/slack_app_client.log)
 	echo "read data: $data" >> ${BOX}/slack_app_client.log
 	local action=$(echo $data | cut -d ':' -f 1)
-	# echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
-	# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-	echo curl -s \
-		-X POST -H  "Content-Type: application/json" \
-		--data "payload={\"actions\": [ {\"value\": \"\"} ]}" \
-		http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-	curl -s \
-		-X POST -H  "Content-Type: application/json" \
-		--data "payload={\"actions\": [ {\"value\": \"$action\"} ]}" \
-		http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-	if [[ 'suggestion_1_on' == "$action" ]] ; then
-		local pod=$(echo $data | cut -d ':' -s -f 2)
-		echo "restart pod $pod" >> ${BOX}/slack_app_client.log
-		do_pod_restart $pod /dev/null
+	if [[ -n "$action" ]] ; then
+		# echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
+		# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		echo curl -s \
+			-X POST -H  "Content-Type: application/json" \
+			--data "payload={\"actions\": [ {\"value\": \"\"} ]}" \
+			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		curl -s \
+			-X POST -H  "Content-Type: application/json" \
+			--data "payload={\"actions\": [ {\"value\": \"$action\"} ]}" \
+			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		if [[ 'suggestion_1_on' == "$action" ]] ; then
+			local pod=$(echo $data | cut -d ':' -s -f 2)
+			echo "restart pod $pod" >> ${BOX}/slack_app_client.log
+			do_pod_restart $pod /dev/null
+		fi
 	fi
 }
 
@@ -662,8 +664,16 @@ function do_prepare() {
 	if ! which jq > /dev/null 2>&1 ; then
 		sudo yum install -y jq
 	fi
-
-	pip3 list 2>/dev/null | (
+	local pip3cmd='pip3'
+	if ! which $pip3cmd  > /dev/null 2>&1 ; then
+		pip3cmd='pip-3.6'
+		if ! which $pip3cmd  > /dev/null 2>&1 ; then
+			echo "ERROR: Unsupported image."
+			echo "       Please install manually pip3 and/or provide availability pip3 cmd"
+			exit -1
+		fi
+	fi
+	$pip3cmd list 2>/dev/null | (
 		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0 ["slackclient"]= ["requests"]=)
 		while read x
 		do
@@ -688,8 +698,8 @@ function do_prepare() {
 		then
 			echo
 			echo -e "${GREEN}Install python packages${NC}"
-			echo "pip3 install$x --upgrade --user"
-			pip3 install$x --upgrade --user
+			echo "$pip3cmd install$x --upgrade --user"
+			$pip3cmd install$x --upgrade --user
 			echo
 		fi
 	)

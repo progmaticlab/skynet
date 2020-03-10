@@ -30,14 +30,24 @@ if ! which pip > /dev/null 2>&1 ; then
 	echo -e "${GREEN}Install pip2${NC}"
 	sudo yum install -y python2-pip
 fi
-if ! which python3 > /dev/null 2>&1  || ! which pip3 > /dev/null 2>&1 ; then
+if ! which python3 > /dev/null 2>&1  ; then
 	echo -e "${GREEN}Install python3${NC}"
-	sudo yum install -y python3 python3-pip
+	sudo yum install -y python3 || sudo yum install -y python36
+fi
+
+pip3cmd='pip3'
+if ! which $pip3cmd  > /dev/null 2>&1 ; then
+	pip3cmd='pip-3.6'
+	if ! which $pip3cmd  > /dev/null 2>&1 ; then
+		echo "ERROR: Unsupported image."
+		echo "       Please install manually pip3 and/or provide availability pip3 cmd"
+		exit -1
+	fi
 fi
 
 if [ ! -f ~/.local/bin/aws ] ; then
 	echo -e "${GREEN}Install AWS cli${NC}"
-	pip3 install awscli --upgrade --user
+	$pip3cmd install awscli --upgrade --user
 fi
 
 if ! [[ -e ~/.aws/config ]]
