@@ -637,8 +637,16 @@ function do_prepare() {
 	if ! which jq > /dev/null 2>&1 ; then
 		sudo yum install -y jq
 	fi
-
-	pip3 list 2>/dev/null | (
+	local pip3cmd='pip3'
+	if ! which $pip3cmd  > /dev/null 2>&1 ; then
+		pip3cmd='pip-3.6'
+		if ! which $pip3cmd  > /dev/null 2>&1 ; then
+			echo "ERROR: Unsupported image."
+			echo "       Please install manually pip3 and/or provide availability pip3 cmd"
+			exit -1
+		fi
+	fi
+	$pip3cmd list 2>/dev/null | (
 		declare -A m=(["tabulate"]= ["pandas"]= ["matplotlib"]= ["tensorflow"]=1.14.0 ["slackclient"]= ["requests"]=)
 		while read x
 		do
@@ -663,8 +671,8 @@ function do_prepare() {
 		then
 			echo
 			echo -e "${GREEN}Install python packages${NC}"
-			echo "pip3 install$x --upgrade --user"
-			pip3 install$x --upgrade --user
+			echo "$pip3cmd install$x --upgrade --user"
+			$pip3cmd install$x --upgrade --user
 			echo
 		fi
 	)
