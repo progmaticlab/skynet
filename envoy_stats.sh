@@ -5,6 +5,16 @@ THIS=$$
 STASH=intermediate
 RECORDINGS=${DIR}/../recordings
 
+function delay() {
+	local p=$1
+	local N=$(date +%s)
+	local D=$((N - p))
+	if [[ $D -lt 5 ]]
+	then
+		sleep $((5 - D))
+	fi
+}
+
 if [[ -d ${RECORDINGS} ]]
 then
         ls -tr ${RECORDINGS}/pods.* | (
@@ -20,6 +30,7 @@ then
 			done
 			[[ -e $i ]] || continue
 
+			n=$(date +%s)
 			w=$(date -Iseconds)
 			kubectl describe pods | grep -w "Name:\|Node:" > "${DIR}/pods.$w"
 
@@ -38,13 +49,14 @@ then
 				done
 			done
 			kill -s 0 $THIS || exit
-			sleep 3
+			delay $n
                 done
                 shopt -u extglob
         )
 fi
 while true
 do
+	n=$(date +%s)
 	d=$(date -Iseconds)
 	kubectl describe pods | grep -w "^Name:\|^Node:" > "${DIR}/pods.$d"
 	for pod in `kubectl get pods --no-headers -o custom-columns=":metadata.name" --field-selector=status.phase=Running` 
@@ -57,4 +69,5 @@ do
 			mv ${DIR}/$STASH ${DIR}/$pod.$d
 		fi
 	done
+	delay $n
 done
