@@ -32,8 +32,10 @@ function rip() {
 	eval "local x=\$$1"
 	if [[ 0 -lt $x ]]
 	then
-		kill -s 9 $x
-		wait $x 2>/dev/null
+		if kill -s 9 $x 2>/dev/null
+		then
+			wait $x 2>/dev/null
+		fi
 		eval "$1=0"
 	fi
 }
@@ -454,9 +456,6 @@ function start_slack_app() {
 function stop_slack_app() {
 	echo "stopping slack app... pid=$MS"
 	rip "MS"
-	[[ -e "/proc/$MS" ]] && { 
-		pidstat -p $MS
-	}
 	echo "finished"
 }
 
@@ -627,6 +626,15 @@ function collapse() {
 	stop_collecting
 	stop_slack_app
 	rip "HC"
+}
+
+function show_stopping_status() {
+	printf "\033[s\033[2J\033[HStopping  \033[u\n"
+}
+
+function do_quit() {
+	protect_cursor show_stopping_status
+	collapse
 }
 
 function care_parent() {
@@ -829,8 +837,7 @@ function show_main_menu_dialog() {
 			;;
 			${#MM[@]})
 				stty echo
-				protect_cursor printf "\033[s\033[2J\033[HStopping  \033[u"
-				collapse
+				do_quit
 				break 2
 			;;
 			*)
