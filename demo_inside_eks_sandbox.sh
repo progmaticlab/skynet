@@ -310,20 +310,22 @@ function process_responses_from_slack() {
 	local data=$(curl -s ${SLACK_APP_PROXY_URL}/analysis/response 2>>${BOX}/slack_app_client.log)
 	echo "read data: $data" >> ${BOX}/slack_app_client.log
 	local action=$(echo $data | cut -d ':' -f 1)
-	# echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
-	# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-	echo curl -s \
-		-X POST -H  "Content-Type: application/json" \
-		--data "payload={\"actions\": [ {\"value\": \"\"} ]}" \
-		http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-	curl -s \
-		-X POST -H  "Content-Type: application/json" \
-		--data "payload={\"actions\": [ {\"value\": \"$action\"} ]}" \
-		http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-	if [[ 'suggestion_1_on' == "$action" ]] ; then
-		local pod=$(echo $data | cut -d ':' -s -f 2)
-		echo "restart pod $pod" >> ${BOX}/slack_app_client.log
-		do_pod_restart $pod /dev/null
+	if [[ -n "$action" ]] ; then
+		# echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
+		# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		echo curl -s \
+			-X POST -H  "Content-Type: application/json" \
+			--data "payload={\"actions\": [ {\"value\": \"\"} ]}" \
+			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		curl -s \
+			-X POST -H  "Content-Type: application/json" \
+			--data "payload={\"actions\": [ {\"value\": \"$action\"} ]}" \
+			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		if [[ 'suggestion_1_on' == "$action" ]] ; then
+			local pod=$(echo $data | cut -d ':' -s -f 2)
+			echo "restart pod $pod" >> ${BOX}/slack_app_client.log
+			do_pod_restart $pod /dev/null
+		fi
 	fi
 }
 
