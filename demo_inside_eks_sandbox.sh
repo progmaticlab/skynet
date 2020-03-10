@@ -196,12 +196,12 @@ echo "\$s: load \$1" \$(date +"%T.%N") >> /host/load_time.log
 if [[ 1 -eq \${Sv1} ]] && [[ "\${SERVICE_VERSION}" == 'v1' ]]
 then
 	echo "\$s: SLEEP" \$(date +"%T.%N") >> /host/load_time.log
-	sleep 2
+	sleep 0.1
 fi
 if [[ 1 -eq \${Sv2} ]] && [[ "\${SERVICE_VERSION}" == 'v2' ]]
 then
 	echo "\$s: SLEEP" \$(date +"%T.%N") >> /host/load_time.log
-	sleep 3
+	sleep 0.15
 fi
 echo "\$s: load \$1" \$(date +"%T.%N") >> /host/load_time.log
 LOADSH

@@ -922,21 +922,22 @@ class Servant:
 		p = self.monitor.pods[anomaly_info['pod']]
 		anomaly_info['pod'] = p.full_name
 		return anomaly_info
-	
+
 	def query_anomalies_info(self, json_):
 		current_anomalies = deepcopy(ml.anomalies_found)
 		current_normals = deepcopy(ml.normals_found)
 		anomalies_to_report = {}
 		for key, val in current_anomalies.items():
 			if key not in self.monitor.reported_anomalies:
-				general_logger.info("Reporting anomaly %s", key)
 				self.monitor.reported_anomalies[key] = val
 				anomalies_to_report[key] = self.prepare_anomaly_to_report(key, val)
-				if key.startswith(sibling_prefix) and key not in anomalies_to_report:
-					metric = anomaly.split('|', 1)[1]
+				general_logger.info("Reporting anomaly %s", key)
+				if key.startswith(sibling_prefix):
+					metric = key.split('|', 1)[1]
 					for sibling in siblings:
 						full_name = sibling + '|' + metric
-						if metric in current_normals:
+						if full_name in current_normals:
+							general_logger.info("Reporting sibling anomaly %s", full_name)
 							anomalies_to_report[full_name] = self.prepare_anomaly_to_report(full_name, current_normals[full_name])
 			else:
 				general_logger.info("Skipping anomaly %s", key)
@@ -945,7 +946,7 @@ class Servant:
 			if key not in current_anomalies:
 				general_logger.info("Deleting reported anomaly %s", key)
 				del self.monitor.reported_anomalies[key]
-		
+		general_logger.info("Anomalies to report %s", str(anomalies_to_report))
 		return self._set_value(json_, anomalies_to_report)
 
 
