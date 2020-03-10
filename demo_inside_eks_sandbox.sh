@@ -407,9 +407,12 @@ function track_anomalies() {
 function start_monitor() {
 	rm -f ${MONITOR_TRANSPORT}
 	mkfifo ${MONITOR_TRANSPORT}
-	${SKYNET}/monitor_envoy_stats.py ./data -r ./ref/refstats -B -p product details ratings reviews-v1 reviews-v2 2> /dev/null 1>&2 < ${MONITOR_TRANSPORT} &
+	${SKYNET}/monitor_envoy_stats.py ${BOX}/data -r ${BOX}/ref/refstats -B -p product details ratings reviews-v1 reviews-v2 2> /dev/null 1>&2 < ${MONITOR_TRANSPORT} &
 	MX=$!
-	exec {MONITOR_CHANNEL}> ${MONITOR_TRANSPORT}
+	local p
+	exec {p}> ${MONITOR_TRANSPORT}
+	MONITOR_CHANNEL=$p
+
 	track_anomalies &
 	MY=$!
 }
@@ -427,6 +430,7 @@ function stop_monitor() {
 
 		wait $MX 2>/dev/null
 		MX=0
+		MONITOR_CHANNEL=0
 	fi
 }
 
@@ -576,7 +580,7 @@ function show_restart_pod_dialog() {
 }
 
 ################################################################################
-## Cleanup data block
+## reset everything block
 
 function cleanup_data() {
 	local suffix=$(date +"%T.%N")
@@ -585,6 +589,29 @@ function cleanup_data() {
 	mv ${BOX}/ref ${BOX}/archive/ref.$suffix
 	mkdir -p ${BOX}/ref
 	mkdir -p ${BOX}/data
+}
+
+function reset_everything() {
+	L=0
+	toggle_loading
+	protect_cursor show_loading_status
+
+	C=0
+	toggle_collecting
+	protect_cursor show_collecting_status
+
+	T=0
+	toggle_learning
+	protect_cursor show_training_status
+
+	reset_anomalies
+	cleanup_data
+	stop_monitor
+	start_monitor
+
+	T=1
+	pull_learning_status
+	protect_cursor show_training_status
 }
 
 ################################################################################
@@ -788,12 +815,7 @@ function show_main_menu_dialog() {
 				show_restart_pod_dialog
 			;;
 			8)
-				L=0; toggle_loading; protect_cursor show_loading_status
-				C=0; toggle_collecting; protect_cursor show_collecting_status
-				T=0; toggle_learning; protect_cursor show_training_status
-				reset_anomalies
-				cleanup_data
-				T=1; toggle_learning; protect_cursor show_training_status
+				reset_everything
 			;;
 			${#MM[@]})
 				stty echo
