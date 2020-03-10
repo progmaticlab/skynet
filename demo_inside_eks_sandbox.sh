@@ -241,7 +241,7 @@ function protect_monitor() {
 
 function query_anomalies_() {
 	local f=$1
-	printf "{\"command\": \"list_anomalies\", \"promise\": \"${f}\"}\0"
+	printf "{\"command\": \"query_load\", \"promise\": \"${f}\"}\0"
 }
 
 function query_anomalies() {
@@ -260,9 +260,9 @@ function query_anomalies() {
 
 function show_anomalies() {
 	local j=$1
-	local a=($(printf '%s' $j | jq '.[].name' | tr -d '"'))
-	local b=($(printf '%s' $j | jq '.[].ordinary'))
-	local c=($(printf '%s' $j | jq '.[].ml_confirmed'))
+	local a=($(printf '%s' $j | jq '.anomalies[].name' | tr -d '"'))
+	local b=($(printf '%s' $j | jq '.anomalies[].ordinary'))
+	local c=($(printf '%s' $j | jq '.anomalies[].ml_confirmed'))
 
 	for((i=0;i<8;++i))
 	do
@@ -275,8 +275,10 @@ function show_anomalies() {
 #		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ordinary(${BOLD}${b[$i]}${NC}), ml(${BOLD}${c[$i]}${NC})\033[u"
 		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ml(${BOLD}${c[$i]}${NC})\033[u"
 	done
-	local samples=$(ls ${BOX}/data/product* 2>/dev/null | wc -l)
-	printf "\033[s\033[9;2H${CYAN}Samples count${NC}: ${samples}  \033[u"
+	a=$(printf '%s' $j | jq '.samples.total')
+#	b=$(printf '%s' $j | jq '.samples.ref')
+	printf "\033[s\033[9;2H${CYAN}Total samples${NC}: ${a}  \033[u"
+#	printf "\033[s\033[10;2H${CYAN}Ref samples${NC}: ${b}  \033[u"
 }
 
 function query_anomalies_data_() {
@@ -527,7 +529,7 @@ function abort_pod_restart() {
 
 MR=()
 function list_restart_eligible_pods() {
-	query_anomalies | jq '.[].name' | tr -d '"'
+	query_anomalies | jq '.anomalies[].name' | tr -d '"'
 }
 
 function show_restart_pod_menu() {

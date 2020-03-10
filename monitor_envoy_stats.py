@@ -13,6 +13,7 @@ import json
 import time
 import fcntl
 import select
+import functools
 import threading
 import subprocess
 from copy import deepcopy
@@ -877,12 +878,18 @@ class Servant:
 
 		return self._set_value(json_, {"learning": learning})
 
-	def list_anomalies(self, json_):
-		R = []
-		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
-			R.append({"name": p.full_name, "ordinary": p.anomaly_maxed, "ml_confirmed": p.anomaly_ml})
+	def query_load(self, json_):
+		S = list(self.monitor.file_series.keys())
+		s = {"ref": 0, "total": len(S)}
+#		r = self.monitor.ref_timestamp
+#		if r:
+#			s["ref"] = functools.reduce(lambda a_, s_: a_ + (r >= s_), S, 0)
 
-		return self._set_value(json_, R)
+		a = []
+		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
+			a.append({"name": p.full_name, "ordinary": p.anomaly_maxed, "ml_confirmed": p.anomaly_ml})
+
+		return self._set_value(json_, {"anomalies": a, "samples": s})
 
 	def reset_pod_service(self, json_):
 		if "pod" not in json_:
