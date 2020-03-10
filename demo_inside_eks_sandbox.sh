@@ -315,11 +315,11 @@ function process_responses_from_slack() {
 		# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
 		echo curl -s \
 			-X POST -H  "Content-Type: application/json" \
-			--data "payload={\"actions\": [ {\"value\": \"\"} ]}" \
+			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
 			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
 		curl -s \
 			-X POST -H  "Content-Type: application/json" \
-			--data "payload={\"actions\": [ {\"value\": \"$action\"} ]}" \
+			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
 			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
 		if [[ 'suggestion_1_on' == "$action" ]] ; then
 			local pod=$(echo $data | cut -d ':' -s -f 2)
