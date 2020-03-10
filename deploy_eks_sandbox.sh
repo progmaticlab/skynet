@@ -47,6 +47,15 @@ then
 	~/.local/bin/aws configure
 fi
 
+AWS_REGION=$(grep -P '\s*=\s*' ~/.aws/config | (shopt -s extglob; while read x; do y=${x/#region*([[:space:]])=*([[:space:]])/}; [[ $x == $y ]] || echo $y; done))
+if [[ -z "${AWS_REGION}" ]]
+then
+	AWS_REGION=us-west-2
+fi
+
+echo
+echo ${GREEN}Use AWS region ${AWS_REGION}${NC}
+
 echo
 echo -e "${GREEN}Download kube tools for AWS${NC}"
 b=$(pwd)/.sandbox/
@@ -89,7 +98,7 @@ apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 metadata:
   name: ${CLUSTER_NAME}
-  region: us-west-2
+  region: ${AWS_REGION}
 
 nodeGroups:
   - name: ${CLUSTER_NAME}-ng-no1
