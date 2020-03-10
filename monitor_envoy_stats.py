@@ -399,7 +399,7 @@ class Pod:
 		if not key in self.matrix:
 			self.matrix[key] = []
 		if not key in self.global_matrix:
-			monitor.global_matrix[key] = []
+			self.global_matrix[key] = []
 		if value == empty:
 			value = ''
 			mvalue = 0
