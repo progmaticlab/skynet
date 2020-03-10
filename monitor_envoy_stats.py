@@ -473,7 +473,7 @@ class Pod:
 					histogram = value.split()
 					for hval in histogram:
 						hval_split = re.split('[(,)]', hval)
-						if hval_split[0] in ['P75', 'P99']:
+						if hval_split[0] in ['P95']:
 							hkey = key + '|' + hval_split[0]
 							self.stats[timestamp][key] = hval_split[1]
 							self.add_value(hkey, hval_split[1], 'nan', 'H')
@@ -588,6 +588,7 @@ class Monitor:
 		self.ml_anomalies = ''
 		self.suspected_anomalies = []
 		self.global_matrix = {}
+		self.reported_anomalies = {}
 		Pod.path = args.path
 		for pod_name in self.args.pods:
 			self.pods[pod_name] = Pod(pod_name, args.path)
@@ -903,12 +904,25 @@ class Servant:
 		return True
 
 	def query_anomalies_info(self, json_):
-		af = deepcopy(ml.anomalies_found)
-		for v in af.values():
-			p = self.monitor.pods[v['pod']]
-			v['pod'] = p.full_name
+		current_anomalies = deepcopy(ml.anomalies_found)
+		anomalies_to_report = {}
+		for key, val in current_anomalies.items():
+			if key not in self.monitor.reported_anomalies:
+				general_logger.info("Reporting anomaly %s", key)
+				p = self.monitor.pods[val['pod']]
+				val['pod'] = p.full_name
+				self.monitor.reported_anomalies[key] = val
+				anomalies_to_report[key] = val
+			else:
+				general_logger.info("Skipping anomaly %s", key)
 
-		return self._set_value(json_, af)
+		for key in self.monitor.reported_anomalies.keys():
+			if key not in current_anomalies:
+				general_logger.info("Deleting reported anomaly %s", key)
+				del self.monitor.reported_anomalies[key]
+		
+#		general_logger.info("Reporting anomalies %s", str(anomalies_to_report))
+		return self._set_value(json_, anomalies_to_report)
 
 
 class Background(Monitor):
