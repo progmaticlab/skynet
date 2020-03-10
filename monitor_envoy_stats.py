@@ -36,7 +36,7 @@ gauges = ['_buffered', '_active', 'uptime', 'concurrency', '_allocated', '_size'
 					'.healthy', '_open', '_cx', '_pending', '_rq', '_retries', 	'.size', '_per_host', 'gradient', '_limit', 
 					'_size', '_msecs', '_faults', '_warming', '_draining', '_started', '_keys', '_layers', '.active', '_requests']
 
-exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer', 'rq_timeout']
+exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer', 'rq_timeout', 'external']
 include_keys = ['rq_time']
 
 class StderrWriter(object):
@@ -921,7 +921,6 @@ class Servant:
 				general_logger.info("Deleting reported anomaly %s", key)
 				del self.monitor.reported_anomalies[key]
 		
-#		general_logger.info("Reporting anomalies %s", str(anomalies_to_report))
 		return self._set_value(json_, anomalies_to_report)
 
 
