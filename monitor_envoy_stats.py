@@ -398,6 +398,7 @@ class Pod:
 			result = self.results[key]
 		if not key in self.matrix:
 			self.matrix[key] = []
+		if not key in self.global_matrix:
 			monitor.global_matrix[key] = []
 		if value == empty:
 			value = ''
