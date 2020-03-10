@@ -39,6 +39,10 @@ gauges = ['_buffered', '_active', 'uptime', 'concurrency', '_allocated', '_size'
 exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer', 'rq_timeout', 'external']
 include_keys = ['rq_time']
 
+# Next structures are to be entered by user later, now hardcoded for bookinfo app
+sibling_prefix = 'reviews-'
+siblings = ['reviews-v1', 'reviews-v2', 'reviews-v3']
+
 class StderrWriter(object):
 	def __init__(self, logger_):
 		self.m_logger = logger_
@@ -639,7 +643,18 @@ class Monitor:
 			pod.process_pod(files, self.file_series, self.pods_count, warming_up)
 			if warming_up:
 				pod.return_to_normal()
-			self.suspected_anomalies.extend(pod.suspected_anomalies)
+			if pod_name.startswith(sibling_prefix):
+				suspected_anomalies = []
+				for anomaly in pod.suspected_anomalies:
+					metric = anomaly.split('|', 1)[1]
+					for sibling in siblings:
+						general_logger.info("Adding sibling metric to check %s ", sibling + '|' + metric)
+						suspected_anomalies.append(sibling + '|' + metric)					
+			else:
+				suspected_anomalies = pod.suspected_anomalies
+				general_logger.info("Adding metrics to check %s ", str(pod.suspected_anomalies))
+			self.suspected_anomalies.extend(suspected_anomalies)
+				
 		
 		if learning:
 			self.ref_timestamp = self.current_timestamp
@@ -903,20 +918,30 @@ class Servant:
 
 		return True
 
+	def prepare_anomaly_to_report(self, name, anomaly_info):
+		p = self.monitor.pods[anomaly_info['pod']]
+		anomaly_info['pod'] = p.full_name
+		return anomaly_info
+	
 	def query_anomalies_info(self, json_):
 		current_anomalies = deepcopy(ml.anomalies_found)
+		current_normals = deepcopy(ml.normals_found)
 		anomalies_to_report = {}
 		for key, val in current_anomalies.items():
 			if key not in self.monitor.reported_anomalies:
 				general_logger.info("Reporting anomaly %s", key)
-				p = self.monitor.pods[val['pod']]
-				val['pod'] = p.full_name
 				self.monitor.reported_anomalies[key] = val
-				anomalies_to_report[key] = val
+				anomalies_to_report[key] = self.prepare_anomaly_to_report(key, val)
+				if key.startswith(sibling_prefix) and key not in anomalies_to_report:
+					metric = anomaly.split('|', 1)[1]
+					for sibling in siblings:
+						full_name = sibling + '|' + metric
+						if metric in current_normals:
+							anomalies_to_report[full_name] = self.prepare_anomaly_to_report(full_name, current_normals[full_name])
 			else:
 				general_logger.info("Skipping anomaly %s", key)
 
-		for key in self.monitor.reported_anomalies.keys():
+		for key in list(self.monitor.reported_anomalies.keys()):
 			if key not in current_anomalies:
 				general_logger.info("Deleting reported anomaly %s", key)
 				del self.monitor.reported_anomalies[key]

@@ -22,6 +22,7 @@ processing = False
 processed_column = "None"
 anomaly_info = ""
 anomalies_found = {}
+normals_found = {}
 df_matrix = None
 progress = 'Waiting'
 columns_handled = []
@@ -60,8 +61,9 @@ def get_service(s):
 
 
 def process_anomalies(logging, column_filter=[]):
-    global anomalies_found, processed_column, anomaly_info, processing, df_matrix, progress, draw_all, columns_handled
-    current_anomalies = {}
+    global anomalies_found, normals_found, processed_column, anomaly_info, processing, df_matrix, progress, draw_all, columns_handled
+    current_anomalies = copy.deepcopy(anomalies_found)
+    current_normals = copy.deepcopy(normals_found)
     processed_column = "Starting"
     if not df_matrix or len(column_filter) == 0:
         return ''
@@ -92,26 +94,31 @@ def process_anomalies(logging, column_filter=[]):
             logging.info("Finished processing column %s", column)
             anomaly_info = "Anomaly in " + column + " ranges: " + str(ranges) + " positions: " + str(positions)
             logging.info("ML processing column %s", anomaly_info)
+            anomaly = {
+                'info': anomaly_info,
+                'pod': get_pod(column),
+                'service': get_service(column),
+                'metric': get_metric(column),
+                'ranges': ranges,
+                'positions': positions,
+                'ts': ts.tolist()
+            }
             if (0 < len(positions) and (
                 len(positions[1]) > 0 and positions[1][-1] > samples * 0.9 or
                 len(positions[2]) > 0 and positions[2][-1] > samples * 0.9 or
                 len(positions[3]) > 0 and positions[3][-1] > samples * 0.9)):
                 # TODO: find another criteria for checking for already found anomalies, like timestamp
                 if current_anomalies.get(column, {}).get('info') != anomaly_info:
-                    current_anomalies[column] = {
-                        'info': anomaly_info,
-                        'pod': get_pod(column),
-                        'service': get_service(column),
-                        'metric': get_metric(column),
-                        'ranges': ranges,
-                        'positions': positions,
-                        'ts': ts.tolist()
-                    }
+                    current_anomalies[column] = anomaly
+                    current_normals.pop(column, None)
                     if not draw_all:
                         draw_anomaly(column, ranges, ts)
                     logging.info(anomaly_info)
             else:
                 current_anomalies.pop(column, None)
+                current_normals[column] = anomaly
+                logging.info("Adding anomaly to normals: %s", column)
+                draw_anomaly(column, ranges, ts)
             if draw_all:
                 draw_anomaly(column, ranges, ts)
         except Exception as e:
@@ -132,4 +139,6 @@ def process_anomalies(logging, column_filter=[]):
     #with lock:
     columns_handled = []
     anomalies_found = copy.deepcopy(current_anomalies)
+    logging.info("ANOMALIES FOUND: %s", str(anomalies_found))
+    normals_found = copy.deepcopy(current_normals)
     return ''

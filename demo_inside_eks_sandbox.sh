@@ -411,7 +411,7 @@ function track_anomalies() {
 function start_monitor() {
 	rm -f ${MONITOR_TRANSPORT}
 	mkfifo ${MONITOR_TRANSPORT}
-	${SKYNET}/monitor_envoy_stats.py ${BOX}/data -r ${BOX}/ref/refstats -B -p product details ratings reviews-v1 reviews-v2 2> /dev/null 1>&2 < ${MONITOR_TRANSPORT} &
+	${SKYNET}/monitor_envoy_stats.py ${BOX}/data -r ${BOX}/ref/refstats -B -p product details ratings reviews-v1 reviews-v2 reviews-v3 2> /dev/null 1>&2 < ${MONITOR_TRANSPORT} &
 	MX=$!
 	local p
 	exec {p}> ${MONITOR_TRANSPORT}
