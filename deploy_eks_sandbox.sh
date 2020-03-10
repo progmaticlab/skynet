@@ -197,6 +197,7 @@ INSTRUCTIONS
 	echo -e "${GREEN}ingress secure port:${NC} ${S}"
 	echo -e "${GREEN}GATEWAY_URL:${NC} ${A}:${P}"
 
+	echo "${CLUSTER_NAME}" > $b/.cluster
 echo
 echo -e "${GREEN}Configure Slack Application server${NC}"
 if [[ -n "$SHADOWCAT_BOT_TOKEN" ]] ; then
