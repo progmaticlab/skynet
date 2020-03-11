@@ -590,6 +590,7 @@ class Monitor:
 		self.current_timestamp = ''
 		self.start_timestamp = ''
 		self.ref_timestamp = ''
+		self.series_count = 0
 		self.ml_anomalies = ''
 		self.suspected_anomalies = []
 		self.global_matrix = {}
@@ -608,6 +609,7 @@ class Monitor:
 			elif val_count != len(vals):
 				general_logger.info("Matrix is uneven: key %s has %s with %s for others", key, str(len(vals)), val_count)
 				return False
+		self.series_count = val_count
 		return True
 	
 	def prepare_file_series(self, path, pod_names):
@@ -894,8 +896,7 @@ class Servant:
 		return self._set_value(json_, {"learning": learning})
 
 	def query_load(self, json_):
-		series_len = len(self.monitor.global_matrix[next(iter(self.monitor.global_matrix.keys()))])
-		series_info = {"ref": 0, "total": series_len}
+		series_info = {"ref": 0, "total": self.monitor.series_count}
 
 		anomalies_info = []
 		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
