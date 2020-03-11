@@ -894,17 +894,14 @@ class Servant:
 		return self._set_value(json_, {"learning": learning})
 
 	def query_load(self, json_):
-		S = list(self.monitor.file_series.keys())
-		s = {"ref": 0, "total": len(S)}
-#		r = self.monitor.ref_timestamp
-#		if r:
-#			s["ref"] = functools.reduce(lambda a_, s_: a_ + (r >= s_), S, 0)
+		series_len = len(self.monitor.global_matrix[next(iter(self.monitor.global_matrix.keys()))])
+		series_info = {"ref": 0, "total": series_len}
 
-		a = []
+		anomalies_info = []
 		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
-			a.append({"name": p.full_name, "ordinary": p.anomaly_maxed, "ml_confirmed": p.anomaly_ml})
+			anomalies_info.append({"name": p.full_name, "ordinary": p.anomaly_maxed, "ml_confirmed": p.anomaly_ml})
 
-		return self._set_value(json_, {"anomalies": a, "samples": s})
+		return self._set_value(json_, {"anomalies": anomalies_info, "samples": series_info})
 
 	def reset_pod_service(self, json_):
 		if "pod" not in json_:
@@ -945,7 +942,7 @@ class Servant:
 						full_name = sibling + '|' + metric
 						if full_name in current_normals:
 							general_logger.info("Reporting sibling anomaly %s", full_name)
-							anomalies_to_report[full_name] = self.prepare_anomaly_to_report(full_name, current_normals[full_name])
+							anomalies_to_report[full_name] = self.prepare_anomaly_to_report(sibling, current_normals[full_name])
 			else:
 				general_logger.info("Skipping anomaly %s", key)
 
