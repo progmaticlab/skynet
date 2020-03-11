@@ -457,6 +457,7 @@ function stop_monitor() {
 		local k=$!
 		wait $MX 2>/dev/null
 		kill -s 9 $k 2>/dev/null
+		wait $k 2>/dev/null
 
 		MX=0
 		MONITOR_CHANNEL=0
