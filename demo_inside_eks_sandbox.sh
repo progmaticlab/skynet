@@ -108,6 +108,20 @@ function stop_collecting() {
 	rip "CC"
 }
 
+function pause_collecting() {
+	if [[ 0 -lt $CC ]]
+	then
+		kill -s 19 $CC 2>/dev/null
+	fi
+}
+
+function resume_collecting() {
+	if [[ 0 -lt $CC ]]
+	then
+		kill -s 18 $CC 2>/dev/null
+	fi
+}
+
 function toggle_collecting() {
 	if [[ 1 -eq $C ]]
 	then
@@ -480,6 +494,10 @@ function show_job_progress() {
 	printf "\033[s\033[3;51H\033[K\033[3;51H$* %b\033[u" ${z[k]}
 }
 
+function wipe_job_progress() {
+	printf "\033[s\033[3;50H\033[K\033[u"
+}
+
 function conduct_pod_restart() {
 	local g
 	exec {g}>${HEALER_MUTEX}
@@ -488,6 +506,8 @@ function conduct_pod_restart() {
 	local f=$(make_feedback)
 	mkfifo $f
 	exec {d}<> $f
+
+	pause_collecting
 	do_pod_restart $1 $d &
 	local c=$!
 
@@ -502,7 +522,8 @@ function conduct_pod_restart() {
 	wait $c 2>/dev/null
 	rm -f $f
 
-	protect_cursor printf "\033[s\033[3;50H\033[K\033[u"
+	resume_collecting
+	protect_cursor wipe_job_progress
 }
 
 XC=0
