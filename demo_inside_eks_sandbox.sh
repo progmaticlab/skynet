@@ -304,24 +304,24 @@ function query_anomalies_data() {
 function send_anomalies_info_to_slackapp() {
 	query_anomalies_data query_anomalies_info $SLACK_DATA_ANOMALY
 	if json2csv_metrics $SLACK_DATA_ANOMALY $SLACK_DATA_METRICS ; then
-		echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run" >>${BOX}/slack_app_client.log
-		curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >>${BOX}/slack_app_client.log 2>&1
+		echo "curl -m 2 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run" >>${BOX}/slack_app_client.log
+		curl -m 2 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >>${BOX}/slack_app_client.log 2>&1
 	fi
 }
 
 function process_responses_from_slack() {
-	echo "curl -s ${SLACK_APP_PROXY_URL}/analysis/response" >>${BOX}/slack_app_client.log
-	local data=$(curl -s ${SLACK_APP_PROXY_URL}/analysis/response 2>>${BOX}/slack_app_client.log)
+	echo "curl -m 2 -s ${SLACK_APP_PROXY_URL}/analysis/response" >>${BOX}/slack_app_client.log
+	local data=$(curl -m 2 -s ${SLACK_APP_PROXY_URL}/analysis/response 2>>${BOX}/slack_app_client.log)
 	echo "read data: $data" >> ${BOX}/slack_app_client.log
 	local action=$(echo $data | cut -d ':' -f 1)
 	if [[ -n "$action" ]] ; then
 		# echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
 		# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-		echo curl -s \
+		echo curl -m 2 -s \
 			-X POST -H  "Content-Type: application/json" \
 			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
 			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-		curl -s \
+		curl -m 2 -s \
 			-X POST -H  "Content-Type: application/json" \
 			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
 			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
