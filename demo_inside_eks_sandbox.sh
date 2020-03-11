@@ -319,7 +319,7 @@ function send_anomalies_info_to_slackapp() {
 	query_anomalies_data query_anomalies_info $SLACK_DATA_ANOMALY
 	if json2csv_metrics $SLACK_DATA_ANOMALY $SLACK_DATA_METRICS ; then
 		local suffix=$(date +%s)
-		cp ${SLACK_DATA_ANOMALY} ${SLACK_DATA_ANOMALY}.$suffix >/dev/null 2>&
+		cp ${SLACK_DATA_ANOMALY} ${SLACK_DATA_ANOMALY}.$suffix >/dev/null 2>&1
 		cp ${SLACK_DATA_METRICS} ${SLACK_DATA_METRICS}.$suffix >/dev/null 2>&1
 		echo "curl -m 2 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run" >>${BOX}/slack_app_client.log
 		curl -m 2 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >>${BOX}/slack_app_client.log 2>&1
