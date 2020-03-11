@@ -135,7 +135,7 @@ function toggle_collecting() {
 }
 
 function show_collecting_status() {
-	printf "\033[s\033[5;2H${CYAN}Collecting${NC}: ${B[$C]}  \033[u"
+	printf "\033[s\033[5;2H${CYAN}Collecting${NC}: %-5s\033[u" ${B[$C]}
 }
 
 ################################################################################
@@ -179,7 +179,7 @@ function toggle_loading() {
 }
 
 function show_loading_status() {
-	printf "\033[s\033[4;2H${CYAN}Loading${NC}: ${B[$L]}  \033[u"
+	printf "\033[s\033[4;2H${CYAN}Loading${NC}: %-5s\033[u" ${B[$L]}
 }
 
 ################################################################################
@@ -188,13 +188,13 @@ function show_loading_status() {
 Sv1=0
 MSv1=('stress reviews-v1' 'stop stressing reviews-v1')
 function show_stressing_v1_status() {
-	printf "\033[s\033[6;2H${CYAN}Stressing reviews-v1${NC}: ${B[$Sv1]}  \033[u"
+	printf "\033[s\033[6;2H${CYAN}Stressing reviews-v1${NC}: %-5s\033[u" ${B[$Sv1]}
 }
 
 Sv2=0
 MSv2=('stress reviews-v2' 'stop stressing reviews-v2')
 function show_stressing_v2_status() {
-	printf "\033[s\033[7;2H${CYAN}Stressing reviews-v2${NC}: ${B[$Sv2]}  \033[u"
+	printf "\033[s\033[7;2H${CYAN}Stressing reviews-v2${NC}: %-5s\033[u" ${B[$Sv2]}
 }
 
 function push_load_sh() {
@@ -228,7 +228,7 @@ INSTRUCTIONS
 T=0
 MT=('train' 'stop training')
 function show_training_status() {
-	printf "\033[s\033[8;2H${CYAN}Learning${NC}: ${B[$T]}  \033[u"
+	printf "\033[s\033[8;2H${CYAN}Learning${NC}: %-5s\033[u" ${B[$T]}
 }
 
 if [[ ! -d $BOX ]] ; then
@@ -291,7 +291,7 @@ function show_anomalies() {
 	done
 	a=$(printf '%s' $j | jq '.samples.total')
 #	b=$(printf '%s' $j | jq '.samples.ref')
-	printf "\033[s\033[9;2H${CYAN}Total samples${NC}: ${a}  \033[u"
+	printf "\033[s\033[9;2H${CYAN}Total samples${NC}: %-5d\033[u" $a
 #	printf "\033[s\033[10;2H${CYAN}Ref samples${NC}: ${b}  \033[u"
 }
 
@@ -825,7 +825,6 @@ function show_main_menu() {
 function show_main_menu_dialog() {
 	local a
 	local g
-	touch ${CURSOR_MUTEX}
 	while true
 	do
 		protect_cursor show_main_menu
