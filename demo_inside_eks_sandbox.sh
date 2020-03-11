@@ -447,8 +447,14 @@ function stop_monitor() {
 		rip "MY"
 
 		protect_monitor stop_monitor_
-
+		(
+			sleep 5
+			kill -s 9 $MX 2>/dev/null
+		) &
+		local k=$!
 		wait $MX 2>/dev/null
+		kill -s 9 $k 2>/dev/null
+
 		MX=0
 		MONITOR_CHANNEL=0
 	fi
