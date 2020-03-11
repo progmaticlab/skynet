@@ -44,3 +44,16 @@ export CONTEXT_NAME='istio-demo'
 ``` bash
 ./skynet/demo_inside_eks_sandbox.sh
 ```
+
+## Demo workflow
+- Start loading
+- Wait for a few seconds
+- Start collecting
+- Wait till collecting gather about 30+ smaples
+- Stop lerining mode
+- Start stress reviews-v1
+- Wait till anomalies be detected (it might take some time - usually ~1min+)
+- Go to slack channel provided in options and check graphs
+- Response with 'Describe Suggested RunBook' => check description in slack channel
+- Response with 'Use Suggested RunBook' => go demo application, check that 
+problematic pod is replaced and anomalies are gone
