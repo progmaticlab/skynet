@@ -924,6 +924,7 @@ class Servant:
 		return True
 
 	def prepare_anomaly_to_report(self, name, anomaly_info):
+		anomaly_info = deepcopy(anomaly_info)
 		p = self.monitor.pods[anomaly_info['pod']]
 		anomaly_info['pod'] = p.full_name
 		return anomaly_info
@@ -943,7 +944,7 @@ class Servant:
 						full_name = sibling + '|' + metric
 						if full_name in current_normals:
 							general_logger.info("Reporting sibling anomaly %s", full_name)
-							anomalies_to_report[full_name] = self.prepare_anomaly_to_report(sibling, current_normals[full_name])
+							anomalies_to_report[full_name] = self.prepare_anomaly_to_report(full_name, current_normals[full_name])
 			else:
 				general_logger.info("Skipping anomaly %s", key)
 
