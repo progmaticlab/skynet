@@ -287,7 +287,7 @@ function show_anomalies() {
 	do
 		local k=$((i + 4))
 #		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ordinary(${BOLD}${b[$i]}${NC}), ml(${BOLD}${c[$i]}${NC})\033[u"
-		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ml(${BOLD}${c[$i]}${NC})\033[u"
+		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ${BOLD}${c[$i]}${NC}\033[u"
 	done
 	a=$(printf '%s' $j | jq '.samples.total')
 #	b=$(printf '%s' $j | jq '.samples.ref')
