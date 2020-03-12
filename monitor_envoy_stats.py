@@ -479,7 +479,10 @@ class Pod:
 					for hval in histogram:
 						hval_split = re.split('[(,)]', hval)
 						if hval_split[0] in ['P95']:
-							hkey = key + '|' + hval_split[0]
+							# Not adding the postfix here because it's a single percentile we take now and also
+							# When there is "No recorded value" it's being added as a non-histo metric without "|P95" postfix
+							# and ruins evenness of the global matrix
+							hkey = key # + '|' + hval_split[0]
 							self.stats[timestamp][key] = hval_split[1]
 							self.add_value(hkey, hval_split[1], 'nan', 'H')
 				else:
@@ -605,6 +608,7 @@ class Monitor:
 		val_count = 0
 		for key, vals in self.global_matrix.items():
 			if val_count == 0 or len(vals) < val_count:
+				general_logger.info("Matrix minimal metric is %s with %s", key, str(len(vals)))
 				val_count = len(vals)
 		logged = False
 		for key, vals in self.global_matrix.items():
