@@ -942,6 +942,10 @@ class Servant:
 		anomalies_to_report = {}
 		for key, val in current_anomalies.items():
 			if key not in self.monitor.reported_anomalies:
+				# Check that non-guilty siblings are not marked as anomalied by ML because of low peaks
+				if self.monitor.pods[val['pod']].anomaly_maxed == 0:
+					general_logger.info("Skipping reporting of sibling as primary incident %s", key)
+					continue
 				self.monitor.reported_anomalies[key] = val
 				anomalies_to_report[key] = self.prepare_anomaly_to_report(key, val)
 				general_logger.info("Reporting anomaly %s", key)
