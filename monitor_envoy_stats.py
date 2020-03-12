@@ -602,9 +602,9 @@ class Monitor:
 		monitor = self
 
 	def adjust_matrix(self):
-		val_count = -1
+		val_count = 0
 		for key, vals in self.global_matrix.items():
-			if val_count == -1 or len(vals) < val_count:
+			if val_count == 0 or len(vals) < val_count:
 				val_count = len(vals)
 		logged = False
 		for key, vals in self.global_matrix.items():

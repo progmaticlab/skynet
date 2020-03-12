@@ -111,16 +111,13 @@ def process_anomalies(logging, column_filter=[]):
                 if current_anomalies.get(column, {}).get('info') != anomaly_info:
                     current_anomalies[column] = anomaly
                     current_normals.pop(column, None)
-                    if not draw_all:
+                    if draw_all:
                         draw_anomaly(column, ranges, ts)
                     logging.info(anomaly_info)
             else:
                 current_anomalies.pop(column, None)
                 current_normals[column] = anomaly
                 logging.info("Adding anomaly to normals: %s", column)
-                draw_anomaly(column, ranges, ts)
-            if draw_all:
-                draw_anomaly(column, ranges, ts)
         except Exception as e:
             anomaly_info = "Shit happens with " + column + " " + str(e)
             logging.error("ERROR in processing column %s", column)
