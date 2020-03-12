@@ -386,21 +386,23 @@ function send_anomalies_info_to_slackapp() {
 }
 
 function process_responses_from_slack() {
-	echo "curl -m 2 -s ${SLACK_APP_PROXY_URL}/analysis/response" >>${BOX}/slack_app_client.log
-	local data=$(curl -m 2 -s ${SLACK_APP_PROXY_URL}/analysis/response 2>>${BOX}/slack_app_client.log)
+	local request_response_url="${SLACK_APP_PROXY_URL}/analysis/response/$SLACK_CHANNEL"
+	echo "curl -m 2 -s $request_response_url" >>${BOX}/slack_app_client.log
+	local data=$(curl -m 2 -s $request_response_url 2>>${BOX}/slack_app_client.log)
 	echo "read data: $data" >> ${BOX}/slack_app_client.log
 	local action=$(echo $data | cut -d ':' -f 1)
 	if [[ -n "$action" ]] ; then
 		# echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
 		# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		local report_action_url="http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action"
 		echo curl -m 2 -s \
 			-X POST -H  "Content-Type: application/json" \
 			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
-			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+			$report_action_url >>${BOX}/slack_app_client.log 2>&1
 		curl -m 2 -s \
 			-X POST -H  "Content-Type: application/json" \
 			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
-			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+			$report_action_url >>${BOX}/slack_app_client.log 2>&1
 		if [[ 'suggestion_1_on' == "$action" ]] ; then
 			local pod=$(echo $data | cut -d ':' -s -f 2)
 			echo "restart pod $pod" >> ${BOX}/slack_app_client.log
