@@ -17,8 +17,10 @@ GREEN='\e[92m'
 CURSOR_MUTEX=$(make_ipc)
 HEALER_MUTEX=$(make_ipc)
 MONITOR_MUTEX=$(make_ipc)
+COLLECTING_MUTEX=$(make_ipc)
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 MONITOR_TRANSPORT=$(make_ipc)
+COLLECTING_TRANSPORT=$(make_ipc)
 
 SLACK_APP=${BOX}/timeseries-vae-anomaly
 SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-"${BOX}/slack_app_data"}
@@ -101,41 +103,98 @@ B=(no yes)
 ################################################################################
 ## Collecting block
 
-C=0
 CC=0
-MC=(collect 'stop collecting')
-function stop_collecting() {
-	rip "CC"
-}
-
-function pause_collecting() {
-	if [[ 0 -lt $CC ]]
-	then
-		kill -s 19 $CC 2>/dev/null
-	fi
-}
-
-function resume_collecting() {
-	if [[ 0 -lt $CC ]]
-	then
-		kill -s 18 $CC 2>/dev/null
-	fi
-}
-
-function toggle_collecting() {
-	if [[ 1 -eq $C ]]
+function do_toggle_collecting() {
+	if [[ 1 -eq $1 ]]
 	then
 		pushd ${BOX}/data >/dev/null
 		${SKYNET}/envoy_stats.sh 2>/dev/null 1>&2 &
 		CC=$!
 		popd > /dev/null
 	else
-		stop_collecting
+		rip "CC"
 	fi
 }
 
 function show_collecting_status() {
-	printf "\033[s\033[5;2H${CYAN}Collecting${NC}: %-5s\033[u" ${B[$C]}
+	printf "\033[s\033[5;2H${CYAN}Collecting${NC}: %-5s\033[u" ${B[$1]}
+}
+
+CM=0
+function track_collecting() {
+	local a
+	local s=0
+	local i=$1
+
+	while read -N 1 -u $i a
+	do
+		case $a in
+			1)
+				s=1
+			;;
+			2)
+				s=0
+			;;
+			3)
+				s=$((1 ^ s))
+			;;
+			4)
+				break 2
+			;;
+		esac
+		do_toggle_collecting $s
+		protect_cursor show_collecting_status $s
+	done
+
+	do_toggle_collecting 0
+}
+
+function start_collecting_monitor() {
+	local t
+
+	rm -f ${COLLECTING_TRANSPORT}
+	mkfifo ${COLLECTING_TRANSPORT}
+	exec {t}<> ${COLLECTING_TRANSPORT}
+
+	track_collecting $t &
+
+	COLLECTING_CHANNEL=$t
+	CM=$!
+}
+
+function stop_collecting_monitor() {
+	tell_collecting_monitor 4
+	if [[ 0 -lt $CM ]]
+	then
+		wait $CM 2>/dev/null
+		CM=0
+		exec {COLLECTING_CHANNEL}>&-
+		COLLECTING_CHANNEL=0
+	fi
+}
+
+function tell_collecting_monitor() {
+	local c=$1
+	if [[ 0 -lt ${CM} ]]
+	then
+		local g
+		exec {g}<${COLLECTING_MUTEX}
+		flock -x ${g}
+		printf "$c" >&${COLLECTING_CHANNEL}
+		exec {g}<&-
+	fi
+}
+
+function stop_collecting() {
+	tell_collecting_monitor 2
+}
+
+function start_collecting() {
+	tell_collecting_monitor 1
+}
+
+function toggle_collecting() {
+	tell_collecting_monitor 3
 }
 
 ################################################################################
@@ -489,8 +548,11 @@ function stop_slack_app() {
 ## Restart pod block
 
 function do_pod_restart() {
+	stop_collecting
 	echo ${BOX}/kubectl delete pod $1 >> ${BOX}/kube.log
 	${BOX}/kubectl delete pod $1 2>> ${BOX}/kube.log 1>&2
+	sleep 5
+	start_collecting
 	echo 1 >& $2
 
 	reset_pod_service $1
@@ -513,11 +575,11 @@ function conduct_pod_restart() {
 	exec {g}>${HEALER_MUTEX}
 	flock -x ${g}
 
+	local d
 	local f=$(make_feedback)
 	mkfifo $f
 	exec {d}<> $f
 
-	pause_collecting
 	do_pod_restart $1 $d &
 	local c=$!
 
@@ -532,7 +594,6 @@ function conduct_pod_restart() {
 	wait $c 2>/dev/null
 	rm -f $f
 
-	resume_collecting
 	protect_cursor wipe_job_progress
 }
 
@@ -630,9 +691,7 @@ function reset_everything() {
 	toggle_loading
 	protect_cursor show_loading_status
 
-	C=0
-	toggle_collecting
-	protect_cursor show_collecting_status
+	stop_collecting
 
 	T=0
 	toggle_learning
@@ -656,7 +715,7 @@ function collapse() {
 	abort_pod_restart
 	stop_monitor
 	stop_loading
-	stop_collecting
+	stop_collecting_monitor
 	stop_slack_app
 	rip "HC"
 }
@@ -693,6 +752,7 @@ function deploy_layout() {
 	touch ${CURSOR_MUTEX}
 	touch ${HEALER_MUTEX}
 	touch ${MONITOR_MUTEX}
+	touch ${COLLECTING_MUTEX}
 }
 
 function do_prepare() {
@@ -792,6 +852,7 @@ POD_CARRIER
 
 	echo -e "${GREEN}Start the monitor${NC}"
 	start_monitor
+	start_collecting_monitor
 
 	echo -e "${GREEN}Start the slack app${NC}"
 	start_slack_app
@@ -811,7 +872,7 @@ do_prepare
 
 MM=()
 function show_main_menu() {
-	MM=("${ML[$L]}" "${MC[$C]}" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}")
+	MM=("${ML[$L]}" "toggle collecting" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}")
 	MM+=("reset anomalies" "replace unhealthy pod" "reset all data" quit)
 
 	printf "\033[13;0H\033[KEnter the number of the action:\n\n"
@@ -838,9 +899,7 @@ function show_main_menu_dialog() {
 				protect_cursor show_loading_status
 			;;
 			2)
-				C=$((1 ^ C))
 				toggle_collecting
-				protect_cursor show_collecting_status
 			;;
 			3)
 				Sv1=$((1 ^ Sv1))
@@ -886,7 +945,7 @@ echo -e "\033[3;0H${BOLD}INDICATORS${NC}:"
 echo -e "\033[3;40H${BOLD}ANOMALIES${NC}:"
 # echo -e "\033[3;80H${BOLD}LOAD STATS${NC}:"
 show_loading_status
-show_collecting_status
+stop_collecting
 show_stressing_v1_status
 show_stressing_v2_status
 show_training_status
