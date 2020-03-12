@@ -601,16 +601,19 @@ class Monitor:
 
 		monitor = self
 
-	def is_matrix_even(self):
-		val_count = 0
+	def adjust_matrix(self):
+		val_count = -1
 		for key, vals in self.global_matrix.items():
-			if val_count == 0:
+			if val_count == -1 or len(vals) < val_count:
 				val_count = len(vals)
-			elif val_count != len(vals):
-				general_logger.info("Matrix is uneven: key %s has %s with %s for others", key, str(len(vals)), val_count)
-				return False
+		logged = False
+		for key, vals in self.global_matrix.items():
+			while len(vals) > val_count:
+				if not logged:
+					general_logger.info("Matrix is uneven: key %s has %s with %s for others, adjusting", key, str(len(vals)), val_count)
+					logged = True
+				vals.pop()
 		self.series_count = val_count
-		return True
 	
 	def prepare_file_series(self, path, pod_names):
 		files = [f for f in os.listdir(path) if "+" in f]
@@ -661,10 +664,10 @@ class Monitor:
 		
 		if learning:
 			self.ref_timestamp = self.current_timestamp
-		# Check that equal files are processed and update ML in this case
-		if self.is_matrix_even():
-			general_logger.info("Updating matrix with %s suspected anomalies", str(len(self.suspected_anomalies)))
-			ml.update_matrix(self.global_matrix, self.suspected_anomalies)
+		# Make sure that matrix is even and update the ML
+		self.adjust_matrix()
+		general_logger.info("Updating matrix with %s suspected anomalies", str(len(self.suspected_anomalies)))
+		ml.update_matrix(self.global_matrix, self.suspected_anomalies)
 
 		self.pods[self.current_pod].sort_top(self.sort_metric, 20, self.empty_filter)
 		self.display_screen(self.pods[self.current_pod], 20)
