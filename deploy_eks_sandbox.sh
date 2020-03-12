@@ -64,7 +64,7 @@ then
 fi
 
 echo
-echo ${GREEN}Use AWS region ${AWS_REGION}${NC}
+echo -e ${GREEN}Use AWS region ${AWS_REGION}${NC}
 
 echo
 echo -e "${GREEN}Download kube tools for AWS${NC}"
