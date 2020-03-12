@@ -297,6 +297,75 @@ fi
 pushd $BOX > /dev/null
 
 ################################################################################
+## Slack app block
+
+MS=0
+function start_slack_app() {
+	mkdir -p $SLACK_DATA_FOLDER
+	SLACK_CHANNEL=$SLACK_CHANNEL \
+	SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN \
+	HOST_NAME='localhost' \
+	PORT_NUMBER=$SLACK_APP_PORT_NUMBER \
+	DATA_FOLDER=$SLACK_DATA_FOLDER \
+	SAMPLES_FOLDER=$SLACK_DATA_FOLDER \
+		python3 -u ${SLACK_APP}/src/server.py >>${BOX}/slack_app_server.log 2>&1 &
+	MS=$!
+}
+
+function stop_slack_app() {
+	echo "stopping slack app... pid=$MS"
+	rip "MS"
+	echo "finished"
+}
+
+SR=0
+function show_slack_reported() {
+	printf "\033[s\033[10;2H${CYAN}Slack reports${NC}: %-5s\033[u" $((SR++))
+}
+
+SU=0
+function show_slack_replaced() {
+	printf "\033[s\033[11;2H${CYAN}Slack replaced${NC}: %-5s\033[u" $((SU++))
+}
+
+function send_anomalies_info_to_slackapp() {
+	query_anomalies_data query_anomalies_info $SLACK_DATA_ANOMALY
+	if json2csv_metrics $SLACK_DATA_ANOMALY $SLACK_DATA_METRICS ; then
+		local suffix=$(date +%s)
+		cp ${SLACK_DATA_ANOMALY} ${SLACK_DATA_ANOMALY}.$suffix >/dev/null 2>&1
+		cp ${SLACK_DATA_METRICS} ${SLACK_DATA_METRICS}.$suffix >/dev/null 2>&1
+		echo "curl -m 2 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run" >>${BOX}/slack_app_client.log
+		curl -m 2 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >>${BOX}/slack_app_client.log 2>&1
+		show_slack_reported
+	fi
+}
+
+function process_responses_from_slack() {
+	echo "curl -m 2 -s ${SLACK_APP_PROXY_URL}/analysis/response" >>${BOX}/slack_app_client.log
+	local data=$(curl -m 2 -s ${SLACK_APP_PROXY_URL}/analysis/response 2>>${BOX}/slack_app_client.log)
+	echo "read data: $data" >> ${BOX}/slack_app_client.log
+	local action=$(echo $data | cut -d ':' -f 1)
+	if [[ -n "$action" ]] ; then
+		# echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
+		# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		echo curl -m 2 -s \
+			-X POST -H  "Content-Type: application/json" \
+			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
+			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		curl -m 2 -s \
+			-X POST -H  "Content-Type: application/json" \
+			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
+			http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
+		if [[ 'suggestion_1_on' == "$action" ]] ; then
+			local pod=$(echo $data | cut -d ':' -s -f 2)
+			echo "restart pod $pod" >> ${BOX}/slack_app_client.log
+			do_pod_restart $pod /dev/null
+			show_slack_replaced
+		fi
+	fi
+}
+
+################################################################################
 ## Monitor block
 
 MX=0
@@ -372,43 +441,6 @@ function query_anomalies_data() {
 
 	cat < $f > $dst
 	rm -f $f
-}
-
-function send_anomalies_info_to_slackapp() {
-	query_anomalies_data query_anomalies_info $SLACK_DATA_ANOMALY
-	if json2csv_metrics $SLACK_DATA_ANOMALY $SLACK_DATA_METRICS ; then
-		local suffix=$(date +%s)
-		cp ${SLACK_DATA_ANOMALY} ${SLACK_DATA_ANOMALY}.$suffix >/dev/null 2>&1
-		cp ${SLACK_DATA_METRICS} ${SLACK_DATA_METRICS}.$suffix >/dev/null 2>&1
-		echo "curl -m 2 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run" >>${BOX}/slack_app_client.log
-		curl -m 2 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >>${BOX}/slack_app_client.log 2>&1
-	fi
-}
-
-function process_responses_from_slack() {
-	local request_response_url="${SLACK_APP_PROXY_URL}/analysis/response/$SLACK_CHANNEL"
-	echo "curl -m 2 -s $request_response_url" >>${BOX}/slack_app_client.log
-	local data=$(curl -m 2 -s $request_response_url 2>>${BOX}/slack_app_client.log)
-	echo "read data: $data" >> ${BOX}/slack_app_client.log
-	local action=$(echo $data | cut -d ':' -f 1)
-	if [[ -n "$action" ]] ; then
-		# echo "curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action" >>${BOX}/slack_app_client.log
-		# curl -s http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action >>${BOX}/slack_app_client.log 2>&1
-		local report_action_url="http://localhost:${SLACK_APP_PORT_NUMBER}/slack/command/$action"
-		echo curl -m 2 -s \
-			-X POST -H  "Content-Type: application/json" \
-			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
-			$report_action_url >>${BOX}/slack_app_client.log 2>&1
-		curl -m 2 -s \
-			-X POST -H  "Content-Type: application/json" \
-			--data "payload={\"actions\": [ {\"value\": \"$data\"} ]}" \
-			$report_action_url >>${BOX}/slack_app_client.log 2>&1
-		if [[ 'suggestion_1_on' == "$action" ]] ; then
-			local pod=$(echo $data | cut -d ':' -s -f 2)
-			echo "restart pod $pod" >> ${BOX}/slack_app_client.log
-			do_pod_restart $pod /dev/null
-		fi
-	fi
 }
 
 function pull_anomalies() {
@@ -523,27 +555,6 @@ function stop_monitor() {
 		MX=0
 		MONITOR_CHANNEL=0
 	fi
-}
-
-################################################################################
-## Slack app block
-MS=0
-function start_slack_app() {
-	mkdir -p $SLACK_DATA_FOLDER
-	SLACK_CHANNEL=$SLACK_CHANNEL \
-	SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN \
-	HOST_NAME='localhost' \
-	PORT_NUMBER=$SLACK_APP_PORT_NUMBER \
-	DATA_FOLDER=$SLACK_DATA_FOLDER \
-	SAMPLES_FOLDER=$SLACK_DATA_FOLDER \
-		python3 -u ${SLACK_APP}/src/server.py >>${BOX}/slack_app_server.log 2>&1 &
-	MS=$!
-}
-
-function stop_slack_app() {
-	echo "stopping slack app... pid=$MS"
-	rip "MS"
-	echo "finished"
 }
 
 ################################################################################
@@ -956,7 +967,7 @@ function show_main_menu_dialog() {
 }
 
 pushd skynet > /dev/null
-echo -e "\033[2J\033[HRunning"
+printf "\033[2J\033[HRunning (Slack channel: ${BOLD}%s${NC})\n" ${SLACK_CHANNEL}
 echo -e "\033[3;0H${BOLD}INDICATORS${NC}:"
 echo -e "\033[3;40H${BOLD}ANOMALIES${NC}:"
 # echo -e "\033[3;80H${BOLD}LOAD STATS${NC}:"
@@ -965,6 +976,8 @@ stop_collecting
 show_stressing_v1_status
 show_stressing_v2_status
 show_training_status
+show_slack_reported
+show_slack_replaced
 show_main_menu_dialog
 
 popd > /dev/null
