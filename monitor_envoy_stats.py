@@ -25,7 +25,7 @@ from platform import node
 import anomaly_graph as ml
 
 EQUAL_ROWS_THRESHOLD = 0.1
-ANOMALY_MAX_THRESHOLD = 0.3
+ANOMALY_MAX_THRESHOLD = 0.4
 ANOMALY_DEVIATION_THRESHOLD = 0.3
 
 learning = True
@@ -37,7 +37,7 @@ gauges = ['_buffered', '_active', 'uptime', 'concurrency', '_allocated', '_size'
 					'.healthy', '_open', '_cx', '_pending', '_rq', '_retries', 	'.size', '_per_host', 'gradient', '_limit', 
 					'_size', '_msecs', '_faults', '_warming', '_draining', '_started', '_keys', '_layers', '.active', '_requests']
 
-exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer', 'rq_timeout', 'external']
+exclude_keys = ['version', 'istio', 'prometheus', 'grafana', 'nginx', 'kube', 'jaeger', 'BlackHole', 'grpc', 'zipkin', 'mixer', 'rq_timeout', 'external', 'internal']
 include_keys = ['rq_time']
 
 # Next structures are to be entered by user later, now hardcoded for bookinfo app
