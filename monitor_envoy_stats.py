@@ -670,7 +670,7 @@ class Monitor:
 			self.ref_timestamp = self.current_timestamp
 		# Make sure that matrix is even and update the ML
 		self.adjust_matrix()
-		general_logger.info("Updating matrix with %s suspected anomalies", str(len(self.suspected_anomalies)))
+		general_logger.info("Updating matrix with %s suspected anomalies %s", str(len(self.suspected_anomalies)), self.suspected_anomalies)
 		ml.update_matrix(self.global_matrix, self.suspected_anomalies)
 
 		self.pods[self.current_pod].sort_top(self.sort_metric, 20, self.empty_filter)
