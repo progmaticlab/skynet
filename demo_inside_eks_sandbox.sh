@@ -605,9 +605,23 @@ function start_pod_restart() {
 	local g
 	exec {g}>${HEALER_MUTEX}
 	flock -x ${g}
-	eval "exec ${g}>&-"
+	exec {g}>&-
 
-	conduct_pod_restart $1 &
+	local p=$1
+	case $p in
+		reviews-v1-*)
+			Sv1=0
+			push_load_sh
+			protect_cursor show_stressing_v1_status
+		;;
+		reviews-v2-*)
+			Sv2=0
+			push_load_sh
+			protect_cursor show_stressing_v2_status
+		;;
+	esac
+
+	conduct_pod_restart $p &
 	XC=$!
 }
 
