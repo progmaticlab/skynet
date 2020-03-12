@@ -7,6 +7,14 @@ function make_ipc() {
 	printf ${IPC}/$(python -c "import uuid; print(uuid.uuid1())")
 }
 
+# read env for slack
+[[ -e ${BOX}/slack_env ]] && source ${BOX}/slack_env
+# update env for case if env is changed
+cat << EOF >${BOX}/slack_env
+export SLACK_CHANNEL=\${SLACK_CHANNEL:-${SLACK_CHANNEL}}
+export SHADOWCAT_BOT_TOKEN=\${SHADOWCAT_BOT_TOKEN:-${SHADOWCAT_BOT_TOKEN}}
+EOF
+
 NC='\e[0m'
 RED='\e[95m'
 SKYNET=${BOX}/skynet
