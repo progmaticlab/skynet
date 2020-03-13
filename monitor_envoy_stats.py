@@ -918,7 +918,8 @@ class Servant:
 		for p in filter(lambda p_: 0 < p_.anomaly_maxed, self.monitor.pods.values()):
 			anomalies_info.append({"name": p.full_name, "ordinary": p.anomaly_maxed, "ml_confirmed": p.anomaly_ml})
 
-		return self._set_value(json_, {"anomalies": anomalies_info, "samples": series_info})
+		p = [{"name": v.full_name, "ordinary": v.anomaly_maxed, "ml_confirmed": v.anomaly_ml} for v in self.monitor.pods.values()]
+		return self._set_value(json_, {"pods": p, "anomalies": anomalies_info, "samples": series_info})
 
 	def reset_pod_service(self, json_):
 		if "pod" not in json_:
