@@ -976,7 +976,6 @@ function show_main_menu_dialog() {
 	done
 }
 
-pushd skynet > /dev/null
 printf "\033[2J\033[HRunning (Slack channel: ${BOLD}%s${NC})\n" ${SLACK_CHANNEL}
 echo -e "\033[3;0H${BOLD}INDICATORS${NC}:"
 echo -e "\033[3;40H${BOLD}ANOMALIES${NC}:"
@@ -990,5 +989,4 @@ show_slack_reported
 show_slack_replaced
 show_main_menu_dialog
 
-popd > /dev/null
 popd > /dev/null
