@@ -339,7 +339,7 @@ class Results:
 			# We'll be looking for metrics with less equals than in reference, which means less uniformity
 			self.diff_equals_count = self.ref_equals_count - self.equals_count
 			# We'll be looking for metrics with increased values
-			self.diff_max = value - self.ref_max
+			self.diff_max = self.max - self.ref_max
 			self.diff_dev = self.dev - self.ref_dev
 			self.diff_norm_dev = self.norm_dev - self.ref_norm_dev
 			self.anomaly_maxed = 0
@@ -964,7 +964,7 @@ class Servant:
 		for key, val in current_anomalies.items():
 			if key not in self.monitor.reported_anomalies:
 				# Check that non-guilty siblings are not marked as anomalied by ML because of low peaks
-				if key not in self.monitor.pods[val['pod']].suspected_anomalies:
+				if key.startswith(sibling_prefix) and key not in self.monitor.pods[val['pod']].suspected_anomalies:
 					general_logger.info("Skipping reporting of sibling as primary incident %s", key)
 					continue
 				self.monitor.reported_anomalies[key] = val
