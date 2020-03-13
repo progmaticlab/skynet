@@ -25,8 +25,10 @@ GREEN='\e[92m'
 CURSOR_MUTEX=$(make_ipc)
 HEALER_MUTEX=$(make_ipc)
 MONITOR_MUTEX=$(make_ipc)
+STRESSING_MUTEX=$(make_ipc)
 COLLECTING_MUTEX=$(make_ipc)
 SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
+STRESSING_STATE=$(make_ipc)
 MONITOR_TRANSPORT=$(make_ipc)
 COLLECTING_TRANSPORT=$(make_ipc)
 
@@ -244,24 +246,24 @@ function toggle_collecting() {
 ################################################################################
 ## Stress v# block
 
-Sv1=0
-MSv1=('stress reviews-v1' 'stop stressing reviews-v1')
 function show_stressing_v1_status() {
-	printf "\033[s\033[5;2H${CYAN}Stressing reviews-v1${NC}: %-5s\033[u" ${B[$Sv1]}
+	printf "\033[s\033[5;2H${CYAN}Stressing reviews-v1${NC}: %-5s\033[u" ${B[$1]}
 }
 
-Sv2=0
-MSv2=('stress reviews-v2' 'stop stressing reviews-v2')
 function show_stressing_v2_status() {
-	printf "\033[s\033[6;2H${CYAN}Stressing reviews-v2${NC}: %-5s\033[u" ${B[$Sv2]}
+	printf "\033[s\033[6;2H${CYAN}Stressing reviews-v2${NC}: %-5s\033[u" ${B[$1]}
 }
 
-function push_load_sh() {
+function toggle_stressing() {
+	cat <<STATE > ${STRESSING_STATE}
+Sv1=$1
+Sv2=$2
+STATE
 	cat <<INSTRUCTIONS | ssh -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=/dev/null -i ${SSH_PUBLIC_KEY/%[.]pub/} ec2-user@$POD_CARRIER sudo -- bash - 2>/dev/null
 cat <<LOADSH > /host/load.sh
 #!/bin/bash
-Sv1=${Sv1}
-Sv2=${Sv2}
+Sv1=$1
+Sv2=$2
 LOADSH
 cat <<'LOADSH' >> /host/load.sh
 s=\${SERVERDIRNAME}-\${SERVICE_VERSION}
@@ -279,6 +281,73 @@ fi
 echo "\$s: load \$1" \$(date +"%T.%N") >> /host/load_time.log
 LOADSH
 INSTRUCTIONS
+}
+
+function down_stressing_v1() {
+	local g
+	(
+		flock -x ${g}
+		. ${STRESSING_STATE}
+		if [[ 1 -eq $Sv1 ]]
+		then
+			toggle_stressing 0 $Sv2
+			protect_cursor show_stressing_v1_status 0
+		fi
+	) {g}> ${STRESSING_MUTEX}
+}
+
+function toggle_stressing_v1() {
+	local g
+	(
+		flock -x ${g}
+		. ${STRESSING_STATE}
+		Sv1=$((1 ^ Sv1))
+		toggle_stressing $Sv1 $Sv2
+		protect_cursor show_stressing_v1_status $Sv1
+	) {g}> ${STRESSING_MUTEX}
+}
+
+function down_stressing_v2() {
+	local g
+	(
+		flock -x ${g}
+		. ${STRESSING_STATE}
+		if [[ 1 -eq $Sv2 ]]
+		then
+			toggle_stressing $Sv1 0
+			protect_cursor show_stressing_v2_status 0
+		fi
+	) {g}> ${STRESSING_MUTEX}
+}
+
+function toggle_stressing_v2() {
+	local g
+	(
+		flock -x ${g}
+		. ${STRESSING_STATE}
+		Sv2=$((1 ^ Sv2))
+		toggle_stressing $Sv1 $Sv2
+		protect_cursor show_stressing_v2_status $Sv2
+	) {g}> ${STRESSING_MUTEX}
+}
+
+function deploy_stressing() {
+	local g
+	(
+		flock -x ${g}
+		toggle_stressing 0 0
+	) {g}> ${STRESSING_MUTEX}
+}
+
+function show_stressing_status() {
+	local g
+	(
+		flock -x ${g}
+		. ${STRESSING_STATE}
+
+		protect_cursor show_stressing_v1_status $Sv1
+		protect_cursor show_stressing_v2_status $Sv2
+	) {g}> ${STRESSING_MUTEX}
 }
 
 ################################################################################
@@ -492,14 +561,8 @@ function reset_anomalies_() {
 function reset_anomalies() {
 	if [[ 0 -lt ${MX} ]]
 	then
-		if [[ 0 -lt $((Sv1 + Sv2)) ]]
-		then
-			Sv1=0
-			Sv2=0
-			push_load_sh
-			protect_cursor show_stressing_v1_status
-			protect_cursor show_stressing_v2_status
-		fi
+		down_stressing_v1
+		down_stressing_v2
 		protect_monitor reset_anomalies_
 	fi
 }
@@ -514,6 +577,7 @@ function reset_pod_service() {
 }
 
 function track_anomalies() {
+
 	while true
 	do
 		pull_anomalies
@@ -563,14 +627,24 @@ function stop_monitor() {
 ## Restart pod block
 
 function do_pod_restart() {
+	local p=$1
+	case $p in
+		reviews-v1-*)
+			down_stressing_v1
+		;;
+		reviews-v2-*)
+			down_stressing_v2
+		;;
+	esac
+
 	stop_collecting
-	echo ${BOX}/kubectl delete pod $1 >> ${BOX}/kube.log
-	${BOX}/kubectl delete pod $1 2>> ${BOX}/kube.log 1>&2
+	echo ${BOX}/kubectl delete pod $p >> ${BOX}/kube.log
+	${BOX}/kubectl delete pod $p 2>> ${BOX}/kube.log 1>&2
 	sleep 5
 	start_collecting
 	echo 1 >& $2
 
-	reset_pod_service $1
+	reset_pod_service $p
 }
 
 function show_job_progress() {
@@ -620,21 +694,7 @@ function start_pod_restart() {
 	flock -x ${g}
 	exec {g}>&-
 
-	local p=$1
-	case $p in
-		reviews-v1-*)
-			Sv1=0
-			push_load_sh
-			protect_cursor show_stressing_v1_status
-		;;
-		reviews-v2-*)
-			Sv2=0
-			push_load_sh
-			protect_cursor show_stressing_v2_status
-		;;
-	esac
-
-	conduct_pod_restart $p &
+	conduct_pod_restart $1 &
 	XC=$!
 }
 
@@ -777,6 +837,7 @@ function deploy_layout() {
 	touch ${CURSOR_MUTEX}
 	touch ${HEALER_MUTEX}
 	touch ${MONITOR_MUTEX}
+	touch ${STRESSING_MUTEX}
 	touch ${COLLECTING_MUTEX}
 }
 
@@ -853,7 +914,7 @@ POD_CARRIER
 	echo -e "Detected: ${POD_CARRIER}\n"
 
 	echo -e "${GREEN}Reset load.sh${NC}"
-	push_load_sh
+	deploy_stressing
 
 	if ! [[ -d skynet ]]
 	then
@@ -897,7 +958,8 @@ do_prepare
 
 MM=()
 function show_main_menu() {
-	MM=("toggle collecting" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}")
+	MM=("toggle collecting" "toggle stressing reviews-v1")
+	MM+=("toggle stressing reviews-v2" "${MT[$T]}")
 	MM+=("reset anomalies" "replace unhealthy pod" "reset all data" quit)
 
 	printf "\033[13;0H\033[KEnter the number of the action:\n\n"
@@ -922,14 +984,10 @@ function show_main_menu_dialog() {
 				toggle_collecting
 			;;
 			2)
-				Sv1=$((1 ^ Sv1))
-				push_load_sh
-				protect_cursor show_stressing_v1_status
+				toggle_stressing_v1
 			;;
 			3)
-				Sv2=$((1 ^ Sv2))
-				push_load_sh
-				protect_cursor show_stressing_v2_status
+				toggle_stressing_v2
 			;;
 			4)
 				T=$((1 ^ T))
@@ -964,8 +1022,7 @@ echo -e "\033[3;0H${BOLD}INDICATORS${NC}:"
 echo -e "\033[3;40H${BOLD}ANOMALIES${NC}:"
 # echo -e "\033[3;80H${BOLD}LOAD STATS${NC}:"
 stop_collecting
-show_stressing_v1_status
-show_stressing_v2_status
+show_stressing_status
 show_training_status
 show_slack_reported
 show_slack_replaced
