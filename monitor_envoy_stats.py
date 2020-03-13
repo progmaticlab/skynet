@@ -345,6 +345,7 @@ class Results:
 			self.anomaly_maxed = 0
 			self.anomaly_deviated = 0
 			if self.diff_max > self.ref_max * (1 + ANOMALY_MAX_THRESHOLD):
+				general_logger.info("MAXED value in %s - %s %s %s", self.name, str(value), str(self.diff_max), str(self.ref_max))
 				self.anomaly_maxed = self.diff_max
 				self.anomalies += 1
 			if self.diff_norm_dev > ANOMALY_DEVIATION_THRESHOLD:

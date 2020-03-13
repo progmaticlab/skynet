@@ -673,6 +673,7 @@ function do_pod_restart() {
 	echo 1 >& $2
 
 	reset_pod_service $p
+	reset_anomalies
 }
 
 function show_job_progress() {
