@@ -109,6 +109,39 @@ sys.exit(0)
 B=(no yes)
 
 ################################################################################
+## Loading block
+
+LC=0
+function stop_loading() {
+	echo "stop pid=$LC" >> $BOX/requests.log
+	rip "LC"
+	echo "stop pid=$LC done" >> $BOX/requests.log
+}
+
+function show_loading_stats() {
+	echo -e "show_loading_stats:\n$@" >> $BOX/requests.log
+	# local i=4
+	# local msg=
+	# echo -e "$@" | while read msg  ; do
+	# 	printf "\033[s\033[$i;80H${CYAN}${msg}${NC}\033[u"
+	# 	(( i+=1 ))
+	# done
+}
+
+function do_loading() {
+	while true; do
+		local stat=$(GATEWAY_URL="$HOST_PORT" ${SKYNET}/request.sh 10 2>&1 | awk '/time_average:/ {print("aver_rq_time: "$4"\nerrors: "$6"\nreqs: "$2)}')
+		show_loading_stats "$stat"
+	done
+}
+
+function start_loading() {
+	do_loading &
+	LC=$!
+	echo "start pid=$LC" >> $BOX/requests.log
+}
+
+################################################################################
 ## Collecting block
 
 CC=0
@@ -119,13 +152,16 @@ function do_toggle_collecting() {
 		${SKYNET}/envoy_stats.sh 2>/dev/null 1>&2 &
 		CC=$!
 		popd > /dev/null
+
+		start_loading
 	else
+		stop_loading
 		rip "CC"
 	fi
 }
 
 function show_collecting_status() {
-	printf "\033[s\033[5;2H${CYAN}Collecting${NC}: %-5s\033[u" ${B[$1]}
+	printf "\033[s\033[4;2H${CYAN}Collecting${NC}: %-5s\033[u" ${B[$1]}
 }
 
 CM=0
@@ -206,62 +242,18 @@ function toggle_collecting() {
 }
 
 ################################################################################
-## Loading block
-
-L=0
-LC=0
-ML=(load 'stop loading')
-function stop_loading() {
-	echo "stop pid=$LC" >> $BOX/requests.log
-	rip "LC"
-	echo "stop pid=$LC done" >> $BOX/requests.log
-}
-
-function show_loading_stats() {
-	echo -e "show_loading_stats:\n$@" >> $BOX/requests.log
-	# local i=4
-	# local msg=
-	# echo -e "$@" | while read msg  ; do
-	# 	printf "\033[s\033[$i;80H${CYAN}${msg}${NC}\033[u"
-	# 	(( i+=1 ))
-	# done
-}
-
-function do_loading() {
-	while true; do
-		local stat=$(GATEWAY_URL="$HOST_PORT" ${SKYNET}/request.sh 10 2>&1 | awk '/time_average:/ {print("aver_rq_time: "$4"\nerrors: "$6"\nreqs: "$2)}')
-		show_loading_stats "$stat"
-	done
-}
-
-function toggle_loading() {
-	if [[ 1 -eq $L ]]
-	then
-		do_loading &
-		LC=$!
-		echo "start pid=$LC" >> $BOX/requests.log
-	else
-		stop_loading
-	fi
-}
-
-function show_loading_status() {
-	printf "\033[s\033[4;2H${CYAN}Loading${NC}: %-5s\033[u" ${B[$L]}
-}
-
-################################################################################
 ## Stress v# block
 
 Sv1=0
 MSv1=('stress reviews-v1' 'stop stressing reviews-v1')
 function show_stressing_v1_status() {
-	printf "\033[s\033[6;2H${CYAN}Stressing reviews-v1${NC}: %-5s\033[u" ${B[$Sv1]}
+	printf "\033[s\033[5;2H${CYAN}Stressing reviews-v1${NC}: %-5s\033[u" ${B[$Sv1]}
 }
 
 Sv2=0
 MSv2=('stress reviews-v2' 'stop stressing reviews-v2')
 function show_stressing_v2_status() {
-	printf "\033[s\033[7;2H${CYAN}Stressing reviews-v2${NC}: %-5s\033[u" ${B[$Sv2]}
+	printf "\033[s\033[6;2H${CYAN}Stressing reviews-v2${NC}: %-5s\033[u" ${B[$Sv2]}
 }
 
 function push_load_sh() {
@@ -295,7 +287,7 @@ INSTRUCTIONS
 T=0
 MT=('train' 'stop training')
 function show_training_status() {
-	printf "\033[s\033[8;2H${CYAN}Learning${NC}: %-5s\033[u" ${B[$T]}
+	printf "\033[s\033[7;2H${CYAN}Learning${NC}: %-5s\033[u" ${B[$T]}
 }
 
 if [[ ! -d $BOX ]] ; then
@@ -328,12 +320,12 @@ function stop_slack_app() {
 
 SR=0
 function show_slack_reported() {
-	printf "\033[s\033[10;2H${CYAN}Slack reports${NC}: %-5s\033[u" $((SR++))
+	printf "\033[s\033[9;2H${CYAN}Slack reports${NC}: %-5s\033[u" $((SR++))
 }
 
 SU=0
 function show_slack_replaced() {
-	printf "\033[s\033[11;2H${CYAN}Slack replaced${NC}: %-5s\033[u" $((SU++))
+	printf "\033[s\033[10;2H${CYAN}Slack replaced${NC}: %-5s\033[u" $((SU++))
 }
 
 function send_anomalies_info_to_slackapp() {
@@ -429,7 +421,7 @@ function show_anomalies() {
 	done
 	a=$(printf '%s' $j | jq '.samples.total')
 #	b=$(printf '%s' $j | jq '.samples.ref')
-	printf "\033[s\033[9;2H${CYAN}Total samples${NC}: %-5d\033[u" $a
+	printf "\033[s\033[8;2H${CYAN}Total samples${NC}: %-5d\033[u" $a
 #	printf "\033[s\033[10;2H${CYAN}Ref samples${NC}: ${b}  \033[u"
 }
 
@@ -724,10 +716,6 @@ function cleanup_data() {
 }
 
 function reset_everything() {
-	L=0
-	toggle_loading
-	protect_cursor show_loading_status
-
 	stop_collecting
 
 	T=0
@@ -909,7 +897,7 @@ do_prepare
 
 MM=()
 function show_main_menu() {
-	MM=("${ML[$L]}" "toggle collecting" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}")
+	MM=("toggle collecting" "${MSv1[$Sv1]}" "${MSv2[$Sv2]}" "${MT[$T]}")
 	MM+=("reset anomalies" "replace unhealthy pod" "reset all data" quit)
 
 	printf "\033[13;0H\033[KEnter the number of the action:\n\n"
@@ -931,36 +919,31 @@ function show_main_menu_dialog() {
 		stty -echo
 		case $a in
 			1)
-				L=$((1 ^ L))
-				toggle_loading
-				protect_cursor show_loading_status
-			;;
-			2)
 				toggle_collecting
 			;;
-			3)
+			2)
 				Sv1=$((1 ^ Sv1))
 				push_load_sh
 				protect_cursor show_stressing_v1_status
 			;;
-			4)
+			3)
 				Sv2=$((1 ^ Sv2))
 				push_load_sh
 				protect_cursor show_stressing_v2_status
 			;;
-			5)
+			4)
 				T=$((1 ^ T))
 				toggle_learning
 				protect_cursor show_training_status
 			;;
-			6)
+			5)
 				reset_anomalies
 			;;
-			7)
+			6)
 				stty echo
 				show_restart_pod_dialog
 			;;
-			8)
+			7)
 				reset_everything
 			;;
 			${#MM[@]})
@@ -980,7 +963,6 @@ printf "\033[2J\033[HRunning (Slack channel: ${BOLD}%s${NC})\n" ${SLACK_CHANNEL}
 echo -e "\033[3;0H${BOLD}INDICATORS${NC}:"
 echo -e "\033[3;40H${BOLD}ANOMALIES${NC}:"
 # echo -e "\033[3;80H${BOLD}LOAD STATS${NC}:"
-show_loading_status
 stop_collecting
 show_stressing_v1_status
 show_stressing_v2_status
