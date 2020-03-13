@@ -671,7 +671,8 @@ function do_pod_restart() {
 	sleep 5
 	start_collecting
 	echo 1 >& $2
-
+	
+	reset_anomalies
 	reset_pod_service $p
 }
 
