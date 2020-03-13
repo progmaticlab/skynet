@@ -334,10 +334,13 @@ class Results:
 			# We'll be looking for metrics with less equals than in reference, which means less uniformity
 			self.diff_equals_count = self.ref_equals_count - self.equals_count
 			# We'll be looking for metrics with increased values
-			self.diff_max = self.max - self.ref_max
+			self.diff_max = value - self.ref_max
 			self.diff_dev = self.dev - self.ref_dev
 			self.diff_norm_dev = self.norm_dev - self.ref_norm_dev
+			self.anomaly_maxed = 0
+			self.anomaly_deviated = 0
 			if self.diff_max > self.ref_max * (1 + ANOMALY_MAX_THRESHOLD):
+				general_logger.info("MAX ANOMALY %s %s %s", str(value), str(self.diff_max), str(self.ref_max))
 				self.anomaly_maxed = self.diff_max
 				self.anomalies += 1
 			if self.diff_norm_dev > ANOMALY_DEVIATION_THRESHOLD:
