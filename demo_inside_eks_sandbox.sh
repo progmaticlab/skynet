@@ -501,11 +501,11 @@ function query_anomalies() {
 
 function show_anomalies() {
 	local j=$1
-	local a=($(printf '%s' $j | jq '.anomalies[].name' | tr -d '"'))
-	local b=($(printf '%s' $j | jq '.anomalies[].ordinary'))
-	local c=($(printf '%s' $j | jq '.anomalies[].ml_confirmed'))
+	local a=($(printf '%s' $j | jq '.pods[].name' | tr -d '"'))
+	local b=($(printf '%s' $j | jq '.pods[].ordinary'))
+	local c=($(printf '%s' $j | jq '.pods[].ml_confirmed'))
 
-	for((i=0;i<8;++i))
+	for((i=0;i<10;++i))
 	do
 		local k=$((i + 4))
 		printf "\033[s\033[${k};42H\033[K\033[u"
@@ -514,7 +514,7 @@ function show_anomalies() {
 	do
 		local k=$((i + 4))
 #		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ordinary(${BOLD}${b[$i]}${NC}), ml(${BOLD}${c[$i]}${NC})\033[u"
-		printf "\033[s\033[${k};42H${RED}${a[$i]}${NC}: ${BOLD}${c[$i]}${NC}\033[u"
+		printf "\033[s\033[${k};42H${RED}%-32s${NC}${BOLD}%6d${NC}\033[u" "${a[$i]}:" ${c[$i]}
 	done
 	a=$(printf '%s' $j | jq '.samples.total')
 #	b=$(printf '%s' $j | jq '.samples.ref')
@@ -671,8 +671,7 @@ function do_pod_restart() {
 	sleep 5
 	start_collecting
 	echo 1 >& $2
-	
-	reset_anomalies
+
 	reset_pod_service $p
 }
 
