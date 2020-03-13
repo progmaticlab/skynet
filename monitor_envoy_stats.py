@@ -113,8 +113,13 @@ def confirm_anomalies():
 	general_logger.info("Starting ML anomalies confirming")
 	while True:
 		try:
-			general_logger.info("ML running confirming for %s", "".join(ml.column_filter))
-			monitor.ml_anomalies = ml.process_anomalies(general_logger, ml.column_filter)
+			if len(ml.column_filter):
+				general_logger.info("ML running confirming for %s", "".join(ml.column_filter))
+				monitor.ml_anomalies = ml.process_anomalies(general_logger, ml.column_filter)
+			else:
+				ml.anomalies_found = {}
+				ml_normals_found = {}
+				monitor.ml_anomalies = []
 		except Exception as e:
 			logging.error("ERROR in ML thread")
 			logging.error(e, exc_info=True)
@@ -340,7 +345,6 @@ class Results:
 			self.anomaly_maxed = 0
 			self.anomaly_deviated = 0
 			if self.diff_max > self.ref_max * (1 + ANOMALY_MAX_THRESHOLD):
-				general_logger.info("MAX ANOMALY %s %s %s", str(value), str(self.diff_max), str(self.ref_max))
 				self.anomaly_maxed = self.diff_max
 				self.anomalies += 1
 			if self.diff_norm_dev > ANOMALY_DEVIATION_THRESHOLD:
