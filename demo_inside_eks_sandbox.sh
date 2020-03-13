@@ -31,6 +31,8 @@ SSH_PUBLIC_KEY=$(find ~/.ssh/id_*.pub | head -n 1)
 STRESSING_STATE=$(make_ipc)
 MONITOR_TRANSPORT=$(make_ipc)
 COLLECTING_TRANSPORT=$(make_ipc)
+SLACK_COUNTERS_MUTEX=$(make_ipc)
+SLACK_COUNTERS_STATE=$(make_ipc)
 
 SLACK_APP=${BOX}/timeseries-vae-anomaly
 SLACK_DATA_FOLDER=${SLACK_DATA_FOLDER:-"${BOX}/slack_app_data"}
@@ -369,7 +371,21 @@ pushd $BOX > /dev/null
 ## Slack app block
 
 MS=0
+
+function save_the_state() {
+	cat <<STATE > ${SLACK_COUNTERS_STATE}
+REPORTS=$1
+REPLACEMENTS=$2
+STATE
+}
+
 function start_slack_app() {
+	local g
+	(
+		flock -x $g
+		save_the_state 0 0
+	) {g}> ${SLACK_COUNTERS_MUTEX}
+
 	mkdir -p $SLACK_DATA_FOLDER
 	SLACK_CHANNEL=$SLACK_CHANNEL \
 	SHADOWCAT_BOT_TOKEN=$SHADOWCAT_BOT_TOKEN \
@@ -387,14 +403,26 @@ function stop_slack_app() {
 	echo "finished"
 }
 
-SR=0
-function show_slack_reported() {
-	printf "\033[s\033[9;2H${CYAN}Slack reports${NC}: %-5s\033[u" $((SR++))
+function bump_slack_reported() {
+	local g
+	(
+		flock -x $g
+		. ${SLACK_COUNTERS_STATE}
+		printf "\033[s\033[9;2H${CYAN}Slack reports${NC}: %-5s\033[u" ${REPORTS}
+		save_the_state $((++REPORTS)) ${REPLACEMENTS}
+
+	) {g}> ${SLACK_COUNTERS_MUTEX}
 }
 
-SU=0
-function show_slack_replaced() {
-	printf "\033[s\033[10;2H${CYAN}Slack replaced${NC}: %-5s\033[u" $((SU++))
+function bump_slack_replaced() {
+	local g
+	(
+		flock -x $g
+		. ${SLACK_COUNTERS_STATE}
+		printf "\033[s\033[10;2H${CYAN}Slack replaced${NC}: %-5s\033[u" ${REPLACEMENTS}
+		save_the_state ${REPORTS} $((++REPLACEMENTS))
+
+	) {g}> ${SLACK_COUNTERS_MUTEX}
 }
 
 function send_anomalies_info_to_slackapp() {
@@ -405,7 +433,7 @@ function send_anomalies_info_to_slackapp() {
 		cp ${SLACK_DATA_METRICS} ${SLACK_DATA_METRICS}.$suffix >/dev/null 2>&1
 		echo "curl -m 5 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run" >>${BOX}/slack_app_client.log
 		curl -m 5 -s http://localhost:${SLACK_APP_PORT_NUMBER}/analysis/run >>${BOX}/slack_app_client.log 2>&1
-		show_slack_reported
+		bump_slack_reported
 	fi
 }
 
@@ -431,7 +459,7 @@ function process_responses_from_slack() {
 			local pod=$(echo $data | cut -d ':' -s -f 2)
 			echo "restart pod $pod" >> ${BOX}/slack_app_client.log
 			do_pod_restart $pod /dev/null
-			show_slack_replaced
+			bump_slack_replaced
 		fi
 	fi
 }
@@ -1024,8 +1052,8 @@ echo -e "\033[3;40H${BOLD}ANOMALIES${NC}:"
 stop_collecting
 show_stressing_status
 show_training_status
-show_slack_reported
-show_slack_replaced
+bump_slack_reported
+bump_slack_replaced
 show_main_menu_dialog
 
 popd > /dev/null
