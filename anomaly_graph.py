@@ -83,6 +83,8 @@ def process_anomalies(logging, column_filter=[]):
     col_count = 0
     for column in df_matrix.keys():
         if not column in column_filter:
+            current_anomalies.pop(column, None)
+            current_normals.pop(column, None)
             continue
         try:
             col_count += 1

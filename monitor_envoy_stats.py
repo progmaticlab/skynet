@@ -25,7 +25,7 @@ from platform import node
 import anomaly_graph as ml
 
 EQUAL_ROWS_THRESHOLD = 0.1
-ANOMALY_MAX_THRESHOLD = 0.4
+ANOMALY_MAX_THRESHOLD = 0.5
 ANOMALY_DEVIATION_THRESHOLD = 0.3
 
 learning = True
@@ -236,6 +236,7 @@ class Results:
 		return value / self.max
 	
 	def return_to_normal(self):
+		
 		self.equals_count = self.ref_equals_count
 		self.max = self.ref_max
 		self.dev = self.ref_dev
@@ -382,6 +383,7 @@ class Pod:
 		self.suspected_anomalies = []
 
 	def return_to_normal(self):
+		general_logger.info("Returning to normal pod %s", self.full_name)
 		for result in self.results.values():
 			result.return_to_normal()
 		self.anomaly_unequal = 0
@@ -456,6 +458,7 @@ class Pod:
 				return False
 
 			if self.full_name != pod_name:
+				general_logger.info("Returning to normal for changed pod old %s new %s", self.full_name, pod_name)
 				self.full_name = pod_name
 				self.return_to_normal()
 
@@ -478,7 +481,7 @@ class Pod:
 					histogram = value.split()
 					for hval in histogram:
 						hval_split = re.split('[(,)]', hval)
-						if hval_split[0] in ['P95']:
+						if hval_split[0] in ['P75']:
 							# Not adding the postfix here because it's a single percentile we take now and also
 							# When there is "No recorded value" it's being added as a non-histo metric without "|P95" postfix
 							# and ruins evenness of the global matrix
@@ -534,6 +537,7 @@ class Pod:
 					self.anomaly_maxed += 1
 					# Adding only maxed to suspected because other kinds are non-important for demo
 					self.suspected_anomalies.append(result.name)
+					general_logger.info("Suspecting max anomaly in metric %s with diff_max %s and diff_dev %s", result.name, str(result.anomaly_maxed), str(result.anomaly_deviated))
 				if result.anomaly_deviated:
 					self.anomaly_deviated += 1
 				if result.anomaly_ml:
@@ -658,8 +662,10 @@ class Monitor:
 				for anomaly in pod.suspected_anomalies:
 					metric = anomaly.split('|', 1)[1]
 					for sibling in siblings:
-						general_logger.info("Adding sibling metric to check %s ", sibling + '|' + metric)
-						suspected_anomalies.append(sibling + '|' + metric)					
+						full_name = sibling + '|' + metric
+						if full_name not in self.suspected_anomalies:
+							general_logger.info("Adding sibling metric to check %s ", full_name)
+							suspected_anomalies.append(full_name)					
 			else:
 				suspected_anomalies = pod.suspected_anomalies
 				general_logger.info("Adding metrics to check %s ", str(pod.suspected_anomalies))
@@ -930,32 +936,39 @@ class Servant:
 
 		return True
 
-	def prepare_anomaly_to_report(self, name, anomaly_info):
+	def prepare_anomaly_to_report(self, name, anomaly_info, is_sibling=False):
 		anomaly_info = deepcopy(anomaly_info)
 		p = self.monitor.pods[anomaly_info['pod']]
 		anomaly_info['pod'] = p.full_name
+		# Cleaning up ranges and positions for siblings of an incident
+		if is_sibling:
+			for position in anomaly_info['positions'].keys():
+				anomaly_info['positions'][position] = []
+			for range in anomaly_info['ranges'].keys():
+				anomaly_info['ranges'][range] = []
 		return anomaly_info
 
 	def query_anomalies_info(self, json_):
 		current_anomalies = deepcopy(ml.anomalies_found)
-		current_normals = deepcopy(ml.normals_found)
+		current_all = deepcopy(ml.normals_found)
+		current_all.update(current_anomalies)
 		anomalies_to_report = {}
 		for key, val in current_anomalies.items():
 			if key not in self.monitor.reported_anomalies:
 				# Check that non-guilty siblings are not marked as anomalied by ML because of low peaks
-				if self.monitor.pods[val['pod']].anomaly_maxed == 0:
+				if key not in self.monitor.pods[val['pod']].suspected_anomalies:
 					general_logger.info("Skipping reporting of sibling as primary incident %s", key)
 					continue
 				self.monitor.reported_anomalies[key] = val
-				anomalies_to_report[key] = self.prepare_anomaly_to_report(key, val)
+				anomalies_to_report[key] = self.prepare_anomaly_to_report(key, val, False)
 				general_logger.info("Reporting anomaly %s", key)
 				if key.startswith(sibling_prefix):
 					metric = key.split('|', 1)[1]
 					for sibling in siblings:
 						full_name = sibling + '|' + metric
-						if full_name in current_normals:
+						if full_name != key and full_name in current_all:
 							general_logger.info("Reporting sibling anomaly %s", full_name)
-							anomalies_to_report[full_name] = self.prepare_anomaly_to_report(full_name, current_normals[full_name])
+							anomalies_to_report[full_name] = self.prepare_anomaly_to_report(full_name, current_all[full_name], True)
 			else:
 				general_logger.info("Skipping anomaly %s", key)
 
